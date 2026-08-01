@@ -1319,3 +1319,71 @@ td {
     width: 100%;
   }
 }
+
+/* =========================
+   PESOS DE CONTENEDORES
+========================= */
+
+.container-preset-note {
+  margin: -6px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.container-weight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payload-calculation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 13px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  background: #f0fdf4;
+}
+
+.payload-calculation span,
+.payload-calculation small {
+  color: #166534;
+  font-size: 12px;
+}
+
+.payload-calculation strong {
+  color: #14532d;
+  font-size: 21px;
+}
+
+.secondary-form-button {
+  margin-top: 10px !important;
+  background: #64748b !important;
+}
+
+.table-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.edit-button {
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 7px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+@media (max-width: 650px) {
+  .container-weight-grid {
+    grid-template-columns: 1fr;
+  }
+}

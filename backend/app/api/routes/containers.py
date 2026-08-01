@@ -32,3 +32,24 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Contenedor no encontrado")
     db.delete(item)
     db.commit()
+@router.put("/{item_id}", response_model=ContainerRead)
+def update_item(
+    item_id: int,
+    payload: ContainerCreate,
+    db: Session = Depends(get_db),
+):
+    item = db.get(Container, item_id)
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Contenedor no encontrado",
+        )
+
+    for field, value in payload.model_dump().items():
+        setattr(item, field, value)
+
+    db.commit()
+    db.refresh(item)
+
+    return item
