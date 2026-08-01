@@ -9,6 +9,10 @@ export default function Loads({ token, onCountChange }) {
   const [products, setProducts] = useState([]);
 
   const [reference, setReference] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [editingId, setEditingId] = useState(null);
   const [vehicleId, setVehicleId] = useState("");
   const [containerId, setContainerId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -181,6 +185,11 @@ export default function Loads({ token, onCountChange }) {
       return;
     }
 
+    if (!clientName.trim()) {
+      setMessage("Ingresa el nombre del cliente.");
+      return;
+    }
+
     if (!vehicleId && !containerId) {
       setMessage("Selecciona un vehículo o un contenedor.");
       return;
@@ -196,6 +205,9 @@ export default function Loads({ token, onCountChange }) {
 
     const payload = {
       reference: reference.trim(),
+      client_name: clientName.trim(),
+      project_name: projectName.trim(),
+      notes: notes.trim(),
       vehicle_id: vehicleId ? Number(vehicleId) : null,
       container_id: containerId ? Number(containerId) : null,
       items: items.map((item) => ({
@@ -205,13 +217,21 @@ export default function Loads({ token, onCountChange }) {
     };
 
     try {
-      const response = await fetch(`${API_URL}/loads`, {
-        method: "POST",
+      const response = await fetch(
+        editingId
+          ? `${API_URL}/loads/${editingId}`
+          : `${API_URL}/loads`,
+        {
+        method: editingId ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           ...authHeaders,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(
+          editingId
+            ? { ...payload, status: "pending" }
+            : payload
+        ),
       });
 
       const data = await response.json();
@@ -226,10 +246,18 @@ export default function Loads({ token, onCountChange }) {
       }
 
       setReference("");
+      setClientName("");
+      setProjectName("");
+      setNotes("");
       setVehicleId("");
       setContainerId("");
       setItems([]);
-      setMessage("Carga creada correctamente.");
+      setEditingId(null);
+      setMessage(
+        editingId
+          ? "Orden de carga actualizada."
+          : "Orden de carga creada como pendiente."
+      );
 
       await loadData();
     } catch (error) {
@@ -253,11 +281,59 @@ export default function Loads({ token, onCountChange }) {
     );
   }
 
+  function startEditing(load) {
+    setEditingId(load.id);
+    setReference(load.reference || "");
+    setClientName(load.client_name || "");
+    setProjectName(load.project_name || "");
+    setNotes(load.notes || "");
+    setVehicleId(load.vehicle_id ? String(load.vehicle_id) : "");
+    setContainerId(load.container_id ? String(load.container_id) : "");
+    setItems(
+      load.items.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        product: getProduct(item.product_id),
+      }))
+    );
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setReference("");
+    setClientName("");
+    setProjectName("");
+    setNotes("");
+    setVehicleId("");
+    setContainerId("");
+    setItems([]);
+    setMessage("");
+  }
+
+  async function deleteLoad(loadId) {
+    if (!window.confirm("¿Eliminar esta orden de carga?")) return;
+
+    const response = await fetch(`${API_URL}/loads/${loadId}`, {
+      method: "DELETE",
+      headers: authHeaders,
+    });
+
+    if (!response.ok) {
+      setMessage("No fue posible eliminar la carga.");
+      return;
+    }
+
+    if (editingId === loadId) cancelEditing();
+    await loadData();
+    setMessage("Orden de carga eliminada.");
+  }
+
   return (
     <div className="module-page">
       <section className="load-layout">
         <form className="form-card load-form" onSubmit={createLoad}>
-          <h2>Nueva carga</h2>
+          <h2>{editingId ? "Editar orden de carga" : "Nueva orden de carga"}</h2>
 
           <label htmlFor="reference">Referencia</label>
           <input
@@ -266,6 +342,32 @@ export default function Loads({ token, onCountChange }) {
             onChange={(event) => setReference(event.target.value)}
             placeholder="Ejemplo: CARGA-001"
             required
+          />
+
+          <label htmlFor="client_name">Cliente</label>
+          <input
+            id="client_name"
+            value={clientName}
+            onChange={(event) => setClientName(event.target.value)}
+            placeholder="Ejemplo: INMOVE"
+            required
+          />
+
+          <label htmlFor="project_name">Proyecto / operación</label>
+          <input
+            id="project_name"
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            placeholder="Ejemplo: Exportación Brasil"
+          />
+
+          <label htmlFor="notes">Observaciones</label>
+          <textarea
+            id="notes"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows="4"
+            placeholder="Indicaciones especiales de la operación"
           />
 
           <label htmlFor="vehicle">Vehículo</label>
@@ -338,8 +440,22 @@ export default function Loads({ token, onCountChange }) {
           </button>
 
           <button type="submit" disabled={loading}>
-            {loading ? "Creando carga..." : "Crear carga"}
+            {loading
+              ? "Guardando..."
+              : editingId
+                ? "Guardar cambios"
+                : "Guardar orden pendiente"}
           </button>
+
+          {editingId && (
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={cancelEditing}
+            >
+              Cancelar edición
+            </button>
+          )}
 
           {message && <p className="form-message">{message}</p>}
         </form>
@@ -410,6 +526,24 @@ export default function Loads({ token, onCountChange }) {
                               Quitar
                             </button>
                           </td>
+                          <td>
+                            <div className="table-actions">
+                              <button
+                                type="button"
+                                className="edit-button"
+                                onClick={() => startEditing(load)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                className="delete-button"
+                                onClick={() => deleteLoad(load.id)}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -469,9 +603,12 @@ export default function Loads({ token, onCountChange }) {
                   <thead>
                     <tr>
                       <th>Referencia</th>
+                      <th>Cliente</th>
+                      <th>Proyecto</th>
                       <th>Estado</th>
                       <th>Unidad</th>
                       <th>Productos</th>
+                      <th></th>
                     </tr>
                   </thead>
 
@@ -482,8 +619,18 @@ export default function Loads({ token, onCountChange }) {
 
                       return (
                         <tr key={load.id}>
-                          <td>{load.reference}</td>
-                          <td>{load.status}</td>
+                          <td><strong>{load.reference}</strong></td>
+                          <td>{load.client_name || "—"}</td>
+                          <td>{load.project_name || "—"}</td>
+                          <td>
+                            <span className={`load-status load-status-${load.status || "pending"}`}>
+                              {load.status === "optimized"
+                                ? "Optimizada"
+                                : load.status === "error"
+                                  ? "Error"
+                                  : "Pendiente"}
+                            </span>
+                          </td>
 
                           <td>
                             {container

@@ -10,6 +10,10 @@ export default function Optimizer({ token }) {
   const [vehicles, setVehicles] = useState([]);
   const [containers, setContainers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [loads, setLoads] = useState([]);
+  const [selectedLoadId, setSelectedLoadId] = useState("");
+  const [selectedLoad, setSelectedLoad] = useState(null);
+  const [savingOptimization, setSavingOptimization] = useState(false);
   const [unitType, setUnitType] = useState("container");
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -27,26 +31,43 @@ export default function Optimizer({ token }) {
     async function loadData() {
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const [vehiclesResponse, containersResponse, productsResponse] =
-          await Promise.all([
-            fetch(`${API_URL}/vehicles`, { headers }),
-            fetch(`${API_URL}/containers`, { headers }),
-            fetch(`${API_URL}/products`, { headers }),
-          ]);
+        const [
+          vehiclesResponse,
+          containersResponse,
+          productsResponse,
+          loadsResponse,
+        ] = await Promise.all([
+          fetch(`${API_URL}/vehicles`, { headers }),
+          fetch(`${API_URL}/containers`, { headers }),
+          fetch(`${API_URL}/products`, { headers }),
+          fetch(`${API_URL}/loads`, { headers }),
+        ]);
 
-        if (!vehiclesResponse.ok || !containersResponse.ok || !productsResponse.ok) {
+        if (
+          !vehiclesResponse.ok ||
+          !containersResponse.ok ||
+          !productsResponse.ok ||
+          !loadsResponse.ok
+        ) {
           throw new Error("No se pudieron cargar los datos.");
         }
 
-        const [vehiclesData, containersData, productsData] = await Promise.all([
+        const [
+          vehiclesData,
+          containersData,
+          productsData,
+          loadsData,
+        ] = await Promise.all([
           vehiclesResponse.json(),
           containersResponse.json(),
           productsResponse.json(),
+          loadsResponse.json(),
         ]);
 
         setVehicles(vehiclesData);
         setContainers(containersData);
         setProducts(productsData);
+        setLoads(loadsData);
       } catch (requestError) {
         setError(requestError.message);
       }
@@ -136,6 +157,137 @@ export default function Optimizer({ token }) {
     ? Math.min(100, (usedWeight / maximumWeight) * 100)
     : 0;
 
+  function handleLoadSelection(event) {
+    const loadId = event.target.value;
+    setSelectedLoadId(loadId);
+    setOptimizationResult({ placed: [], rejected: [] });
+    setError("");
+
+    if (!loadId) {
+      setSelectedLoad(null);
+      setSelectedItems([]);
+      return;
+    }
+
+    const load = loads.find(
+      (item) => String(item.id) === String(loadId)
+    );
+
+    if (!load) {
+      setError("No se encontró la orden seleccionada.");
+      return;
+    }
+
+    try {
+      const loadItems = load.items.map((item) => {
+        const product = products.find(
+          (productItem) =>
+            String(productItem.id) === String(item.product_id)
+        );
+
+        if (!product) {
+          throw new Error(
+            `No se encontró el producto ${item.product_id}.`
+          );
+        }
+
+        return {
+          product,
+          quantity: Number(item.quantity),
+        };
+      });
+
+      if (load.container_id) {
+        setUnitType("container");
+        setSelectedUnitId(String(load.container_id));
+      } else if (load.vehicle_id) {
+        setUnitType("vehicle");
+        setSelectedUnitId(String(load.vehicle_id));
+      } else {
+        throw new Error("La orden no tiene unidad asignada.");
+      }
+
+      setSelectedLoad(load);
+      setSelectedItems(loadItems);
+    } catch (loadError) {
+      setSelectedLoad(null);
+      setSelectedItems([]);
+      setError(loadError.message);
+    }
+  }
+
+  async function saveOptimizationResult(result) {
+    if (!selectedLoad) return;
+
+    setSavingOptimization(true);
+
+    try {
+      const balance = calculateWeightBalance({
+        capacity: selectedCapacity,
+        placedItems: result.placed,
+      });
+
+      const totalWeight = result.placed.reduce(
+        (total, item) =>
+          total + Number(item.product?.weight_kg || 0),
+        0
+      );
+
+      const totalVolume = result.placed.reduce(
+        (total, item) =>
+          total +
+          Number(item.length || 0) *
+            Number(item.width || 0) *
+            Number(item.height || 0),
+        0
+      );
+
+      const response = await fetch(
+        `${API_URL}/loads/${selectedLoad.id}/optimization`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            status:
+              result.rejected.length > 0
+                ? "warning"
+                : "optimized",
+            total_weight_kg: totalWeight,
+            total_volume_m3: totalVolume,
+            center_of_gravity_x: balance.center.x,
+            center_of_gravity_y: balance.center.y,
+            center_of_gravity_z: balance.center.z,
+            report_path: "",
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "No se pudo guardar la optimización."
+        );
+      }
+
+      setSelectedLoad(data);
+      setLoads((current) =>
+        current.map((load) =>
+          load.id === data.id ? data : load
+        )
+      );
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSavingOptimization(false);
+    }
+  }
+
   function handleUnitTypeChange(event) {
     setUnitType(event.target.value);
     setSelectedUnitId("");
@@ -186,7 +338,7 @@ export default function Optimizer({ token }) {
     setOptimizationResult({ placed: [], rejected: [] });
   }
 
-  function handleOptimize() {
+  async function handleOptimize() {
     setError("");
 
     if (!selectedCapacity) {
@@ -199,7 +351,16 @@ export default function Optimizer({ token }) {
       return;
     }
 
-    setOptimizationResult(arrangeProducts(selectedCapacity, selectedItems));
+    const result = arrangeProducts(
+      selectedCapacity,
+      selectedItems
+    );
+
+    setOptimizationResult(result);
+
+    if (selectedLoad) {
+      await saveOptimizationResult(result);
+    }
   }
 
   function handleGenerateReport() {
@@ -208,8 +369,14 @@ export default function Optimizer({ token }) {
       return;
     }
 
-    const client = window.prompt("Nombre del cliente:", "INMOVE") || "INMOVE";
+    const client =
+      selectedLoad?.client_name ||
+      window.prompt("Nombre del cliente:", "INMOVE") ||
+      "INMOVE";
+
     const project =
+      selectedLoad?.project_name ||
+      selectedLoad?.reference ||
       window.prompt(
         "Nombre del proyecto o referencia:",
         selectedCapacity.name ||
@@ -296,8 +463,50 @@ export default function Optimizer({ token }) {
           <h2>Configurar optimización</h2>
 
           <label>
+            Orden de carga
+            <select
+              value={selectedLoadId}
+              onChange={handleLoadSelection}
+            >
+              <option value="">
+                Modo manual / seleccionar orden
+              </option>
+              {loads.map((load) => (
+                <option key={load.id} value={load.id}>
+                  {load.reference}
+                  {load.client_name
+                    ? ` · ${load.client_name}`
+                    : ""}
+                  {load.status
+                    ? ` · ${load.status}`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selectedLoad && (
+            <div className="load-order-summary">
+              <strong>{selectedLoad.reference}</strong>
+              <span>
+                Cliente: {selectedLoad.client_name || "—"}
+              </span>
+              <span>
+                Proyecto: {selectedLoad.project_name || "—"}
+              </span>
+              <span>
+                Estado: {selectedLoad.status || "pending"}
+              </span>
+            </div>
+          )}
+
+          <label>
             Tipo de unidad
-            <select value={unitType} onChange={handleUnitTypeChange}>
+            <select
+              value={unitType}
+              onChange={handleUnitTypeChange}
+              disabled={Boolean(selectedLoad)}
+            >
               <option value="container">Contenedor</option>
               <option value="vehicle">Vehículo</option>
             </select>
@@ -308,6 +517,7 @@ export default function Optimizer({ token }) {
             <select
               value={selectedUnitId}
               onChange={(event) => setSelectedUnitId(event.target.value)}
+              disabled={Boolean(selectedLoad)}
             >
               <option value="">Seleccionar unidad</option>
               {availableUnits.map((unit) => (
@@ -318,6 +528,7 @@ export default function Optimizer({ token }) {
             </select>
           </label>
 
+          {!selectedLoad && (
           <div className="optimizer-product-form">
             <label>
               Producto
@@ -349,6 +560,7 @@ export default function Optimizer({ token }) {
               Agregar producto
             </button>
           </div>
+          )}
 
           <div className="selected-products">
             <div className="section-title-row">
@@ -369,6 +581,7 @@ export default function Optimizer({ token }) {
                     type="button"
                     className="danger-button"
                     onClick={() => handleRemoveProduct(item.product.id)}
+                    disabled={Boolean(selectedLoad)}
                   >
                     Quitar
                   </button>
@@ -378,7 +591,11 @@ export default function Optimizer({ token }) {
           </div>
 
           <button type="button" className="optimize-button" onClick={handleOptimize}>
-            Optimizar carga
+            {savingOptimization
+              ? "Guardando resultado..."
+              : selectedLoad
+                ? "Optimizar orden"
+                : "Optimizar carga"}
           </button>
         </section>
 
