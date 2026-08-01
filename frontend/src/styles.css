@@ -1282,3 +1282,40 @@ td {
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+/* =========================
+   INFORME PROFESIONAL v0.7
+========================= */
+
+.report-button {
+  min-height: 42px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f766e, #16a34a);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.report-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.report-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+  .optimizer-viewer-card > .section-title-row {
+    flex-direction: column;
+  }
+
+  .report-button {
+    width: 100%;
+  }
+}

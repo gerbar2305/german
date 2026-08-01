@@ -317,6 +317,7 @@ useEffect(() => {
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
+      preserveDrawingBuffer: true,
     });
 
     renderer.setSize(width, height);

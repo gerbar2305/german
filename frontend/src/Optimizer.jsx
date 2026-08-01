@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import LoadViewer3D from "./LoadViewer3D.jsx";
 import arrangeProducts from "./optimizer/arrangeProducts.js";
+import { calculateWeightBalance } from "./viewer/WeightBalanceController.js";
+import { generateLoadReport } from "./reports/LoadReportGenerator.js";
 
 const API_URL = "http://127.0.0.1:8000/api/v1";
 
@@ -104,7 +106,8 @@ export default function Optimizer({ token }) {
   const maximumWeight = useMemo(() => {
     if (!selectedCapacity) return 0;
     return Number(
-      selectedCapacity.max_weight_kg ||
+      selectedCapacity.max_payload_kg ||
+        selectedCapacity.max_weight_kg ||
         selectedCapacity.payload_capacity_kg ||
         selectedCapacity.capacity_kg ||
         0
@@ -118,6 +121,15 @@ export default function Optimizer({ token }) {
         0
       ),
     [optimizationResult.placed]
+  );
+
+  const weightBalance = useMemo(
+    () =>
+      calculateWeightBalance({
+        capacity: selectedCapacity,
+        placedItems: optimizationResult.placed,
+      }),
+    [selectedCapacity, optimizationResult.placed]
   );
 
   const weightPercentage = maximumWeight
@@ -188,6 +200,84 @@ export default function Optimizer({ token }) {
     }
 
     setOptimizationResult(arrangeProducts(selectedCapacity, selectedItems));
+  }
+
+  function handleGenerateReport() {
+    if (!selectedCapacity || optimizationResult.placed.length === 0) {
+      setError("Primero selecciona una unidad y optimiza una carga.");
+      return;
+    }
+
+    const client = window.prompt("Nombre del cliente:", "INMOVE") || "INMOVE";
+    const project =
+      window.prompt(
+        "Nombre del proyecto o referencia:",
+        selectedCapacity.name ||
+          selectedCapacity.code ||
+          selectedCapacity.plate ||
+          "Plan de carga"
+      ) || "Plan de carga";
+
+    const declaredTare = Number(
+      selectedCapacity.tare_weight_kg ??
+        selectedCapacity.empty_weight_kg ??
+        selectedCapacity.own_weight_kg ??
+        selectedCapacity.vehicle_weight_kg ??
+        selectedCapacity.container_weight_kg ??
+        0
+    );
+
+    let tareWeight = Math.max(
+      0,
+      Number.isFinite(declaredTare)
+        ? declaredTare
+        : 0
+    );
+
+    if (tareWeight <= 0) {
+      const tareInput = window.prompt(
+        "Este contenedor no tiene tara registrada. Ingresá la tara en kg:",
+        "0"
+      );
+
+      tareWeight = Math.max(
+        0,
+        Number(tareInput || 0) || 0
+      );
+    }
+
+    const grossWeight = usedWeight + tareWeight;
+
+    let viewerImage = "";
+    try {
+      const canvas = document.querySelector(".load-viewer-3d canvas");
+      if (canvas) {
+        viewerImage = canvas.toDataURL("image/png", 1);
+      }
+    } catch (captureError) {
+      console.warn("No se pudo capturar la vista 3D:", captureError);
+    }
+
+    generateLoadReport({
+      client,
+      project,
+      unitType,
+      capacity: selectedCapacity,
+      placedItems: optimizationResult.placed,
+      rejectedItems: optimizationResult.rejected,
+      viewerImage,
+      stats: {
+        usedWeight,
+        tareWeight,
+        grossWeight,
+        maximumWeight,
+        weightPercentage,
+        usedVolume,
+        containerVolume,
+        volumePercentage,
+      },
+      weightBalance,
+    });
   }
 
   return (
@@ -298,6 +388,15 @@ export default function Optimizer({ token }) {
               <h2>Vista 3D de la carga</h2>
               <p>Arrastra con el mouse para rotar y usa la rueda para acercar.</p>
             </div>
+
+            <button
+              type="button"
+              className="report-button"
+              onClick={handleGenerateReport}
+              disabled={!selectedCapacity || optimizationResult.placed.length === 0}
+            >
+              📄 Generar informe
+            </button>
           </div>
 
           <LoadViewer3D

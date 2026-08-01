@@ -1,21 +1,83 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const API_URL = "http://127.0.0.1:8000/api/v1";
 
-const initialForm = {
-  code: "",
-  container_type: "40ft",
-  internal_length_m: "",
-  internal_width_m: "",
-  internal_height_m: "",
-  max_payload_kg: "",
+const CONTAINER_PRESETS = {
+  "20ft": {
+    internal_length_m: 5.9,
+    internal_width_m: 2.35,
+    internal_height_m: 2.39,
+    tare_weight_kg: 2200,
+    max_gross_weight_kg: 30480,
+  },
+  "40ft": {
+    internal_length_m: 12.03,
+    internal_width_m: 2.35,
+    internal_height_m: 2.39,
+    tare_weight_kg: 3700,
+    max_gross_weight_kg: 30480,
+  },
+  "40ft-high-cube": {
+    internal_length_m: 12.03,
+    internal_width_m: 2.35,
+    internal_height_m: 2.69,
+    tare_weight_kg: 3900,
+    max_gross_weight_kg: 30480,
+  },
+  "45ft-high-cube": {
+    internal_length_m: 13.55,
+    internal_width_m: 2.35,
+    internal_height_m: 2.69,
+    tare_weight_kg: 4800,
+    max_gross_weight_kg: 30480,
+  },
+  reefer: {
+    internal_length_m: 11.58,
+    internal_width_m: 2.29,
+    internal_height_m: 2.54,
+    tare_weight_kg: 4600,
+    max_gross_weight_kg: 34000,
+  },
+  "open-top": {
+    internal_length_m: 12.03,
+    internal_width_m: 2.35,
+    internal_height_m: 2.35,
+    tare_weight_kg: 3900,
+    max_gross_weight_kg: 30480,
+  },
 };
+
+function buildInitialForm(type = "40ft") {
+  const preset = CONTAINER_PRESETS[type];
+
+  return {
+    code: "",
+    container_type: type,
+    internal_length_m: String(preset.internal_length_m),
+    internal_width_m: String(preset.internal_width_m),
+    internal_height_m: String(preset.internal_height_m),
+    tare_weight_kg: String(preset.tare_weight_kg),
+    max_gross_weight_kg: String(preset.max_gross_weight_kg),
+  };
+}
+
+function formatKg(value) {
+  return `${Number(value || 0).toLocaleString("es-UY")} kg`;
+}
 
 export default function Containers({ token, onCountChange }) {
   const [containers, setContainers] = useState([]);
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(buildInitialForm());
+  const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const calculatedPayload = useMemo(() => {
+    const gross = Number(form.max_gross_weight_kg || 0);
+    const tare = Number(form.tare_weight_kg || 0);
+
+    return Math.max(0, gross - tare);
+  }, [form.max_gross_weight_kg, form.tare_weight_kg]);
 
   async function loadContainers() {
     try {
@@ -31,7 +93,7 @@ export default function Containers({ token, onCountChange }) {
 
       const data = await response.json();
       setContainers(data);
-      onCountChange(data.length);
+      onCountChange?.(data.length);
     } catch (error) {
       setMessage(error.message);
     }
@@ -44,10 +106,52 @@ export default function Containers({ token, onCountChange }) {
   function handleChange(event) {
     const { name, value } = event.target;
 
+    if (name === "container_type") {
+      const preset = CONTAINER_PRESETS[value];
+
+      setForm((current) => ({
+        ...current,
+        container_type: value,
+        internal_length_m: String(preset.internal_length_m),
+        internal_width_m: String(preset.internal_width_m),
+        internal_height_m: String(preset.internal_height_m),
+        tare_weight_kg: String(preset.tare_weight_kg),
+        max_gross_weight_kg: String(preset.max_gross_weight_kg),
+      }));
+
+      return;
+    }
+
     setForm((current) => ({
       ...current,
       [name]: value,
     }));
+  }
+
+  function resetForm() {
+    setForm(buildInitialForm());
+    setEditingId(null);
+  }
+
+  function startEditing(container) {
+    setEditingId(container.id);
+    setMessage("");
+
+    setForm({
+      code: container.code || "",
+      container_type: container.container_type || "40ft",
+      internal_length_m: String(container.internal_length_m ?? ""),
+      internal_width_m: String(container.internal_width_m ?? ""),
+      internal_height_m: String(container.internal_height_m ?? ""),
+      tare_weight_kg: String(container.tare_weight_kg ?? 0),
+      max_gross_weight_kg: String(
+        container.max_gross_weight_kg ??
+          Number(container.max_payload_kg || 0) +
+            Number(container.tare_weight_kg || 0)
+      ),
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleSubmit(event) {
@@ -55,17 +159,35 @@ export default function Containers({ token, onCountChange }) {
     setLoading(true);
     setMessage("");
 
+    const tareWeight = Number(form.tare_weight_kg);
+    const maxGrossWeight = Number(form.max_gross_weight_kg);
+
+    if (maxGrossWeight <= tareWeight) {
+      setMessage(
+        "El peso bruto máximo debe ser mayor que la tara del contenedor."
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
-      ...form,
+      code: form.code.trim(),
+      container_type: form.container_type,
       internal_length_m: Number(form.internal_length_m),
       internal_width_m: Number(form.internal_width_m),
       internal_height_m: Number(form.internal_height_m),
-      max_payload_kg: Number(form.max_payload_kg),
+      tare_weight_kg: tareWeight,
+      max_gross_weight_kg: maxGrossWeight,
+      max_payload_kg: maxGrossWeight - tareWeight,
     };
 
     try {
-      const response = await fetch(`${API_URL}/containers`, {
-        method: "POST",
+      const url = editingId
+        ? `${API_URL}/containers/${editingId}`
+        : `${API_URL}/containers`;
+
+      const response = await fetch(url, {
+        method: editingId ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -79,13 +201,19 @@ export default function Containers({ token, onCountChange }) {
         const detail =
           typeof data.detail === "string"
             ? data.detail
-            : "No fue posible registrar el contenedor";
+            : editingId
+              ? "No fue posible actualizar el contenedor"
+              : "No fue posible registrar el contenedor";
 
         throw new Error(detail);
       }
 
-      setForm(initialForm);
-      setMessage("Contenedor registrado correctamente.");
+      resetForm();
+      setMessage(
+        editingId
+          ? "Contenedor actualizado correctamente."
+          : "Contenedor registrado correctamente."
+      );
       await loadContainers();
     } catch (error) {
       setMessage(error.message);
@@ -118,6 +246,10 @@ export default function Containers({ token, onCountChange }) {
         throw new Error("No fue posible eliminar el contenedor");
       }
 
+      if (editingId === containerId) {
+        resetForm();
+      }
+
       await loadContainers();
       setMessage("Contenedor eliminado correctamente.");
     } catch (error) {
@@ -129,7 +261,11 @@ export default function Containers({ token, onCountChange }) {
     <div className="module-page">
       <section className="vehicle-layout">
         <form className="form-card" onSubmit={handleSubmit}>
-          <h2>Nuevo contenedor</h2>
+          <h2>
+            {editingId
+              ? "Editar contenedor"
+              : "Nuevo contenedor"}
+          </h2>
 
           <label htmlFor="code">Código o identificación</label>
           <input
@@ -155,6 +291,11 @@ export default function Containers({ token, onCountChange }) {
             <option value="reefer">Refrigerado</option>
             <option value="open-top">Open Top</option>
           </select>
+
+          <p className="container-preset-note">
+            Valores orientativos según el tipo. Confirmá siempre la tara y
+            el peso bruto máximo indicados en la placa CSC del contenedor.
+          </p>
 
           <div className="dimensions-grid">
             <div>
@@ -200,21 +341,61 @@ export default function Containers({ token, onCountChange }) {
             </div>
           </div>
 
-          <label htmlFor="max_payload_kg">Carga máxima (kg)</label>
-          <input
-            id="max_payload_kg"
-            name="max_payload_kg"
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={form.max_payload_kg}
-            onChange={handleChange}
-            required
-          />
+          <div className="container-weight-grid">
+            <div>
+              <label htmlFor="tare_weight_kg">Tara / peso propio (kg)</label>
+              <input
+                id="tare_weight_kg"
+                name="tare_weight_kg"
+                type="number"
+                step="1"
+                min="0"
+                value={form.tare_weight_kg}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="max_gross_weight_kg">
+                Peso bruto máximo (kg)
+              </label>
+              <input
+                id="max_gross_weight_kg"
+                name="max_gross_weight_kg"
+                type="number"
+                step="1"
+                min="1"
+                value={form.max_gross_weight_kg}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="payload-calculation">
+            <span>Carga útil máxima calculada</span>
+            <strong>{formatKg(calculatedPayload)}</strong>
+            <small>Peso bruto máximo − tara</small>
+          </div>
 
           <button type="submit" disabled={loading}>
-            {loading ? "Guardando..." : "Registrar contenedor"}
+            {loading
+              ? "Guardando..."
+              : editingId
+                ? "Guardar cambios"
+                : "Registrar contenedor"}
           </button>
+
+          {editingId && (
+            <button
+              type="button"
+              className="secondary-form-button"
+              onClick={resetForm}
+            >
+              Cancelar edición
+            </button>
+          )}
 
           {message && <p className="form-message">{message}</p>}
         </form>
@@ -240,7 +421,9 @@ export default function Containers({ token, onCountChange }) {
                     <th>Tipo</th>
                     <th>Dimensiones</th>
                     <th>Volumen</th>
-                    <th>Carga máxima</th>
+                    <th>Tara</th>
+                    <th>Peso bruto máx.</th>
+                    <th>Carga útil</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -248,9 +431,9 @@ export default function Containers({ token, onCountChange }) {
                 <tbody>
                   {containers.map((container) => {
                     const volume =
-                      container.internal_length_m *
-                      container.internal_width_m *
-                      container.internal_height_m;
+                      Number(container.internal_length_m) *
+                      Number(container.internal_width_m) *
+                      Number(container.internal_height_m);
 
                     return (
                       <tr key={container.id}>
@@ -262,18 +445,31 @@ export default function Containers({ token, onCountChange }) {
                           {container.internal_height_m} m
                         </td>
                         <td>{volume.toFixed(2)} m³</td>
+                        <td>{formatKg(container.tare_weight_kg)}</td>
                         <td>
-                          {container.max_payload_kg.toLocaleString()} kg
+                          {formatKg(container.max_gross_weight_kg)}
                         </td>
+                        <td>{formatKg(container.max_payload_kg)}</td>
                         <td>
-                          <button
-                            className="delete-button"
-                            onClick={() =>
-                              deleteContainer(container.id)
-                            }
-                          >
-                            Eliminar
-                          </button>
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className="edit-button"
+                              onClick={() => startEditing(container)}
+                            >
+                              Editar
+                            </button>
+
+                            <button
+                              type="button"
+                              className="delete-button"
+                              onClick={() =>
+                                deleteContainer(container.id)
+                              }
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
