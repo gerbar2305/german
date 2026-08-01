@@ -4,6 +4,7 @@ import Containers from "./Containers.jsx";
 import Products from "./Products.jsx";
 import Loads from "./Loads.jsx";
 import Optimizer from "./Optimizer.jsx";
+import DashboardHome from "./DashboardHome.jsx";
 import "./styles.css";
 
 const API_URL = "http://127.0.0.1:8000/api/v1";
@@ -61,9 +62,7 @@ export default function App() {
   }
 
   async function loadCounts() {
-    if (!token) {
-      return;
-    }
+    if (!token) return;
 
     const modules = [
       ["vehicles", "vehicles"],
@@ -72,31 +71,38 @@ export default function App() {
       ["loads", "loads"],
     ];
 
-    const newCounts = { ...counts };
+    const newCounts = {
+      vehicles: 0,
+      containers: 0,
+      products: 0,
+      loads: 0,
+    };
 
-    for (const [key, endpoint] of modules) {
-      try {
-        const response = await fetch(`${API_URL}/${endpoint}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+    await Promise.all(
+      modules.map(async ([key, endpoint]) => {
+        try {
+          const response = await fetch(`${API_URL}/${endpoint}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          newCounts[key] = data.length;
+          if (response.ok) {
+            const data = await response.json();
+            newCounts[key] = data.length;
+          }
+        } catch {
+          newCounts[key] = 0;
         }
-      } catch {
-        newCounts[key] = 0;
-      }
-    }
+      })
+    );
 
     setCounts(newCounts);
   }
 
   useEffect(() => {
     loadCounts();
-  }, [token]);
+  }, [token, activePage]);
 
   function logout() {
     localStorage.removeItem("gerbar_token");
@@ -110,7 +116,6 @@ export default function App() {
         <section className="login-card">
           <div className="login-brand">
             <span>🚛</span>
-
             <div>
               <h1>GerBar</h1>
               <p>Load Planner</p>
@@ -156,12 +161,21 @@ export default function App() {
     );
   }
 
+  const pageTitles = {
+    dashboard: "Centro de control",
+    vehicles: "Gestión de vehículos",
+    containers: "Gestión de contenedores",
+    products: "Gestión de productos",
+    loads: "Órdenes de carga",
+    optimizer: "Optimizador de carga",
+    reports: "Reportes",
+  };
+
   return (
     <main className="dashboard">
       <aside className="sidebar">
         <div className="logo">
           <span className="logo-icon">🚛</span>
-
           <div>
             <strong>GerBar</strong>
             <small>Load Planner</small>
@@ -169,61 +183,31 @@ export default function App() {
         </div>
 
         <nav>
-          <button
-            className={activePage === "dashboard" ? "nav-active" : ""}
-            onClick={() => setActivePage("dashboard")}
-          >
-            Dashboard
-          </button>
+          {[
+            ["dashboard", "🏠 Dashboard"],
+            ["vehicles", "🚛 Vehículos"],
+            ["containers", "📦 Contenedores"],
+            ["products", "📋 Productos"],
+            ["loads", "🧾 Cargas"],
+            ["optimizer", "⚙️ Optimizador"],
+          ].map(([page, label]) => (
+            <button
+              key={page}
+              className={activePage === page ? "nav-active" : ""}
+              onClick={() => setActivePage(page)}
+            >
+              {label}
+            </button>
+          ))}
 
-          <button
-            className={activePage === "vehicles" ? "nav-active" : ""}
-            onClick={() => setActivePage("vehicles")}
-          >
-            Vehículos
-          </button>
-
-          <button
-  className={activePage === "containers" ? "nav-active" : ""}
-  onClick={() => setActivePage("containers")}
->
-  Contenedores
-</button>
-          <button
-  className={activePage === "products" ? "nav-active" : ""}
-  onClick={() => setActivePage("products")}
->
-  Productos
-</button>
-          <button
-  className={activePage === "loads" ? "nav-active" : ""}
-  onClick={() => setActivePage("loads")}
->
-  Cargas
-</button>
-          <button
-  className={activePage === "optimizer" ? "nav-active" : ""}
-  onClick={() => setActivePage("optimizer")}
->
-  Optimizador
-  </button>
-          <button disabled>Reportes</button>
+          <button disabled>📄 Reportes</button>
         </nav>
       </aside>
 
       <section className="dashboard-content">
         <header className="topbar">
           <div>
-            <h1>
-  {activePage === "dashboard" && "Panel principal"}
-  {activePage === "vehicles" && "Gestión de vehículos"}
-  {activePage === "containers" && "Gestión de contenedores"}
-  {activePage === "products" && "Gestión de productos"}
-  {activePage === "loads" && "Gestión de cargas"}
-  {activePage === "optimizer" && "Optimizador de carga"}
-  {activePage === "reports" && "Reportes"}
-</h1>        
-
+            <h1>{pageTitles[activePage]}</h1>
             <p>GerBar Load Planner</p>
           </div>
 
@@ -233,104 +217,60 @@ export default function App() {
         </header>
 
         {activePage === "dashboard" && (
-          <>
-            <div className="summary-grid">
-              <article
-                className="summary-card clickable-card"
-                onClick={() => setActivePage("vehicles")}
-              >
-                <span>🚛</span>
-                <strong>{counts.vehicles}</strong>
-                <p>Vehículos</p>
-              </article>
-
-              <article className="summary-card">
-                <span>📦</span>
-                <strong>{counts.containers}</strong>
-                <p>Contenedores</p>
-              </article>
-
-              <article className="summary-card">
-                <span>📋</span>
-                <strong>{counts.products}</strong>
-                <p>Productos</p>
-              </article>
-
-              <article
-  className="summary-card clickable-card"
-  onClick={() => setActivePage("loads")}
->
-  <span>⚙️</span>
-  <strong>{counts.loads}</strong>
-  <p>Cargas activas</p>
-</article>
-            </div>
-
-            <section className="welcome-card">
-              <h2>Sistema conectado correctamente</h2>
-
-              <p>
-                Ya puedes registrar vehículos y consultar los datos guardados
-                en la base de datos.
-              </p>
-
-              <button
-                className="primary-action"
-                onClick={() => setActivePage("vehicles")}
-              >
-                Registrar primer vehículo
-              </button>
-            </section>
-          </>
+          <DashboardHome
+            token={token}
+            counts={counts}
+            onNavigate={setActivePage}
+          />
         )}
 
         {activePage === "vehicles" && (
-  <Vehicles
-    token={token}
-    onCountChange={(total) =>
-      setCounts((current) => ({
-        ...current,
-        vehicles: total,
-      }))
-    }
-  />
-)}
+          <Vehicles
+            token={token}
+            onCountChange={(total) =>
+              setCounts((current) => ({
+                ...current,
+                vehicles: total,
+              }))
+            }
+          />
+        )}
 
-{activePage === "containers" && (
-  <Containers
-    token={token}
-    onCountChange={(total) =>
-      setCounts((current) => ({
-        ...current,
-        containers: total,
-      }))
-    }
-  />
-)}
+        {activePage === "containers" && (
+          <Containers
+            token={token}
+            onCountChange={(total) =>
+              setCounts((current) => ({
+                ...current,
+                containers: total,
+              }))
+            }
+          />
+        )}
 
-{activePage === "products" && (
-  <Products
-    token={token}
-    onCountChange={(total) =>
-      setCounts((current) => ({
-        ...current,
-        products: total,
-      }))
-    }
-  />
-)}
+        {activePage === "products" && (
+          <Products
+            token={token}
+            onCountChange={(total) =>
+              setCounts((current) => ({
+                ...current,
+                products: total,
+              }))
+            }
+          />
+        )}
 
-{activePage === "loads" && (
-  <Loads
-    token={token}
-    onCountChange={(total) =>
-      setCounts((current) => ({
-        ...current,
-        loads: total,
-      }))
-    }
-  />
-)}
+        {activePage === "loads" && (
+          <Loads
+            token={token}
+            onCountChange={(total) =>
+              setCounts((current) => ({
+                ...current,
+                loads: total,
+              }))
+            }
+          />
+        )}
 
         {activePage === "optimizer" && (
           <Optimizer token={token} />
