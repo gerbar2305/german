@@ -10,6 +10,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   getItemDimensions,
   getProductColor,
+  getRotatedFootprint,
+  getRotationY,
 } from "./viewer/ViewerUtils.js";
 import {
   isValidPlacement,
@@ -39,11 +41,88 @@ export default function LoadViewer3D({
   const [editMode, setEditMode] = useState(false);
   const [dragMeasurements, setDragMeasurements] = useState(null);
 
+  function normalizeRotation(value) {
+    const number = Number(value || 0);
+    return ((number % 360) + 360) % 360;
+  }
+
+  function applySelectedRotation(nextRotation) {
+    if (
+      selectedItemIndex === null ||
+      !placedItems[selectedItemIndex]
+    ) {
+      return;
+    }
+
+    const item = placedItems[selectedItemIndex];
+
+    if (item.product?.rotatable === false) {
+      window.alert("Este producto no permite rotación.");
+      return;
+    }
+
+    const rotationY = normalizeRotation(nextRotation);
+    const candidate = {
+      x: Number(item.x || 0),
+      y: Number(item.y || 0),
+      z: Number(item.z || 0),
+      length: Number(item.length || item.product?.length_m || 1),
+      width: Number(item.width || item.product?.width_m || 1),
+      height: Number(item.height || item.product?.height_m || 1),
+      rotationY,
+    };
+
+    const valid = isValidPlacement({
+      candidate,
+      placedItems,
+      movingIndex: selectedItemIndex,
+      capacity,
+    });
+
+    if (!valid) {
+      window.alert(
+        "No se puede aplicar ese ángulo porque el producto chocaría con otra carga o saldría del contenedor."
+      );
+      return;
+    }
+
+    const updatedItems = placedItems.map((placedItem, index) =>
+      index === selectedItemIndex
+        ? {
+            ...placedItem,
+            rotationY,
+            orientation:
+              rotationY === 0
+                ? "VERTICAL"
+                : `ROTATED_${rotationY}`,
+          }
+        : placedItem
+    );
+
+    if (typeof onItemsChangeRef.current === "function") {
+      onItemsChangeRef.current(updatedItems);
+    }
+  }
+
+  function rotateSelectedBy(step) {
+    if (
+      selectedItemIndex === null ||
+      !placedItems[selectedItemIndex]
+    ) {
+      return;
+    }
+
+    applySelectedRotation(
+      Number(placedItems[selectedItemIndex].rotationY || 0) + step
+    );
+  }
+
   function applySelectedOrientation({
     length,
     width,
     height,
     orientation,
+    rotationY = 0,
   }) {
     if (
       selectedItemIndex === null ||
@@ -61,6 +140,7 @@ export default function LoadViewer3D({
       length: Number(length),
       width: Number(width),
       height: Number(height),
+      rotationY: normalizeRotation(rotationY),
     };
 
     const valid = isValidPlacement({
@@ -89,6 +169,7 @@ export default function LoadViewer3D({
           width: candidate.width,
           height: candidate.height,
           orientation,
+          rotationY: candidate.rotationY,
         };
       }
     );
@@ -102,45 +183,7 @@ export default function LoadViewer3D({
   }
 
   function rotateSelectedItem() {
-    if (
-      selectedItemIndex === null ||
-      !placedItems[selectedItemIndex]
-    ) {
-      return;
-    }
-
-    const item = placedItems[selectedItemIndex];
-
-    if (item.product?.rotatable === false) {
-      window.alert(
-        "Este producto no permite rotación."
-      );
-      return;
-    }
-
-    const currentLength = Number(
-      item.length || 1
-    );
-
-    const currentWidth = Number(
-      item.width || 1
-    );
-
-    const currentHeight = Number(
-      item.height ||
-        item.product?.height_m ||
-        1
-    );
-
-    applySelectedOrientation({
-      length: currentWidth,
-      width: currentLength,
-      height: currentHeight,
-      orientation:
-        item.orientation === "ROTATED"
-          ? "VERTICAL"
-          : "ROTATED",
-    });
+    rotateSelectedBy(90);
   }
 
   function laySelectedItemOnLength() {
@@ -179,6 +222,7 @@ export default function LoadViewer3D({
       width: currentHeight,
       height: currentWidth,
       orientation: "LAY_ON_LENGTH",
+      rotationY: 0,
     });
   }
 
@@ -218,6 +262,7 @@ export default function LoadViewer3D({
       width: currentWidth,
       height: currentLength,
       orientation: "LAY_ON_WIDTH",
+      rotationY: 0,
     });
   }
 
@@ -264,7 +309,7 @@ useEffect(() => {
     }
 
     event.preventDefault();
-    rotateSelectedItem();
+    rotateSelectedBy(event.shiftKey ? -15 : 15);
   }
 
   window.addEventListener(
@@ -641,20 +686,28 @@ useEffect(() => {
         material
       );
 
-      box.position.set(
-        Number(item.x || 0) +
-          dimensions.length / 2,
-        Number(item.z || 0) +
-          dimensions.height / 2,
-        Number(item.y || 0) +
-          dimensions.width / 2
+      const rotationY = getRotationY(item);
+      const footprint = getRotatedFootprint(
+        dimensions.length,
+        dimensions.width,
+        rotationY
       );
+
+      box.position.set(
+        Number(item.x || 0) + footprint.length / 2,
+        Number(item.z || 0) + dimensions.height / 2,
+        Number(item.y || 0) + footprint.width / 2
+      );
+
+      box.rotation.y = THREE.MathUtils.degToRad(rotationY);
 
       box.userData = {
         type: "product",
         itemIndex: index,
         originalColor,
         dimensions,
+        rotationY,
+        footprint,
       };
 
       productMeshes.push(box);
@@ -674,6 +727,7 @@ useEffect(() => {
         );
 
       outline.position.copy(box.position);
+      outline.rotation.y = box.rotation.y;
       outlines[index] = outline;
 
       scene.add(outline);
@@ -889,8 +943,10 @@ useEffect(() => {
         return;
       }
 
-      const dimensions =
-        draggedMesh.userData.dimensions;
+      const dimensions = {
+        ...draggedMesh.userData.dimensions,
+        rotationY: draggedMesh.userData.rotationY,
+      };
 
       const dragPlacement = calculateDragPlacement({
         intersectionPoint,
@@ -1385,16 +1441,11 @@ useEffect(() => {
               <span>Orientación</span>
 
               <strong>
-                {selectedItem.orientation ===
-                "LAY_ON_LENGTH"
+                {selectedItem.orientation === "LAY_ON_LENGTH"
                   ? "Acostado sobre largo"
-                  : selectedItem.orientation ===
-                    "LAY_ON_WIDTH"
-                  ? "Acostado sobre ancho"
-                  : selectedItem.orientation ===
-                    "ROTATED"
-                  ? "Rotado 90°"
-                  : "Vertical"}
+                  : selectedItem.orientation === "LAY_ON_WIDTH"
+                    ? "Acostado sobre ancho"
+                    : `${normalizeRotation(selectedItem.rotationY || 0)}°`}
               </strong>
             </div>
 
@@ -1418,25 +1469,58 @@ useEffect(() => {
           </p>
 
           <div className="selected-item-actions">
-            <div className="orientation-actions">
+            <div className="orientation-actions rotation-360-controls">
+              <label className="rotation-select-label">
+                Rotación horizontal
+                <select
+                  value={normalizeRotation(selectedItem.rotationY || 0)}
+                  onChange={(event) =>
+                    applySelectedRotation(Number(event.target.value))
+                  }
+                  disabled={
+                    !editMode ||
+                    selectedItem.product?.rotatable === false
+                  }
+                >
+                  {Array.from(
+                    { length: 24 },
+                    (_, index) => index * 15
+                  ).map((angle) => (
+                    <option key={angle} value={angle}>
+                      {angle}°
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <button
                 type="button"
-                onClick={rotateSelectedItem}
-                disabled={
-                  !editMode ||
-                  selectedItem.product?.rotatable === false
-                }
+                onClick={() => rotateSelectedBy(-15)}
+                disabled={!editMode || selectedItem.product?.rotatable === false}
               >
-                ↻ Rotar 90°
+                ↺ −15°
+              </button>
+
+              <button
+                type="button"
+                onClick={() => rotateSelectedBy(15)}
+                disabled={!editMode || selectedItem.product?.rotatable === false}
+              >
+                ↻ +15°
+              </button>
+
+              <button
+                type="button"
+                onClick={() => applySelectedRotation(0)}
+                disabled={!editMode || selectedItem.product?.rotatable === false}
+              >
+                Restablecer
               </button>
 
               <button
                 type="button"
                 onClick={laySelectedItemOnLength}
-                disabled={
-                  !editMode ||
-                  selectedItem.product?.tiltable === false
-                }
+                disabled={!editMode || selectedItem.product?.tiltable === false}
               >
                 ▰ Acostar sobre largo
               </button>
@@ -1444,18 +1528,15 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={laySelectedItemOnWidth}
-                disabled={
-                  !editMode ||
-                  selectedItem.product?.tiltable === false
-                }
+                disabled={!editMode || selectedItem.product?.tiltable === false}
               >
                 ▰ Acostar sobre ancho
               </button>
             </div>
 
             <span>
-              R rota el producto. Las opciones para acostarlo
-              validan límites y colisiones automáticamente.
+              R gira +15° y Shift+R gira −15°. Cada ángulo valida límites,
+              colisiones y Snap automáticamente.
             </span>
           </div>
         </div>

@@ -2109,3 +2109,39 @@ button.control-kpi-card:hover {
   color: #0f172a;
   font-size: 15px;
 }
+/* ROTACIÓN 360° */
+.rotation-360-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.rotation-select-label {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rotation-select-label select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.rotation-360-controls button {
+  min-height: 40px;
+}
+
+@media (max-width: 700px) {
+  .rotation-360-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+}

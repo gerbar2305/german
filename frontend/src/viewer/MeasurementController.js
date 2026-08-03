@@ -1,10 +1,10 @@
-import { getItemDimensions } from "./ViewerUtils.js";
+import {
+  getItemFootprint,
+  getRotatedFootprint,
+} from "./ViewerUtils.js";
 
 function clampDistance(value) {
-  if (!Number.isFinite(value)) {
-    return null;
-  }
-
+  if (!Number.isFinite(value)) return null;
   return Math.max(0, Number(value.toFixed(4)));
 }
 
@@ -21,15 +21,20 @@ export function calculateClearances({
 }) {
   const containerLength = Number(capacity?.internal_length_m || 0);
   const containerWidth = Number(capacity?.internal_width_m || 0);
+  const footprint = getRotatedFootprint(
+    candidate.length,
+    candidate.width,
+    candidate.rotationY
+  );
 
   const result = {
     front: clampDistance(candidate.x),
     back: clampDistance(
-      containerLength - candidate.x - candidate.length
+      containerLength - candidate.x - footprint.length
     ),
     left: clampDistance(candidate.y),
     right: clampDistance(
-      containerWidth - candidate.y - candidate.width
+      containerWidth - candidate.y - footprint.width
     ),
     nearestBox: null,
   };
@@ -37,54 +42,54 @@ export function calculateClearances({
   let nearest = Infinity;
 
   placedItems.forEach((item, index) => {
-    if (index === movingIndex) {
-      return;
-    }
+    if (index === movingIndex) return;
 
-    const dimensions = getItemDimensions(item);
+    const otherFootprint = getItemFootprint(item);
     const other = {
       x: Number(item.x || 0),
       y: Number(item.y || 0),
       z: Number(item.z || 0),
-      ...dimensions,
+      length: otherFootprint.length,
+      width: otherFootprint.width,
+      height: Number(item.height || item.product?.height_m || 1),
     };
 
-    const sameHeightBand = rangesOverlap(
-      candidate.z,
-      candidate.z + candidate.height,
-      other.z,
-      other.z + other.height
-    );
-
-    if (!sameHeightBand) {
+    if (
+      !rangesOverlap(
+        candidate.z,
+        candidate.z + candidate.height,
+        other.z,
+        other.z + other.height
+      )
+    ) {
       return;
     }
 
-    const overlapY = rangesOverlap(
-      candidate.y,
-      candidate.y + candidate.width,
-      other.y,
-      other.y + other.width
-    );
-
-    if (overlapY) {
+    if (
+      rangesOverlap(
+        candidate.y,
+        candidate.y + footprint.width,
+        other.y,
+        other.y + other.width
+      )
+    ) {
       const before = candidate.x - (other.x + other.length);
-      const after = other.x - (candidate.x + candidate.length);
+      const after = other.x - (candidate.x + footprint.length);
 
       if (before >= -0.0001) nearest = Math.min(nearest, Math.max(0, before));
       if (after >= -0.0001) nearest = Math.min(nearest, Math.max(0, after));
     }
 
-    const overlapX = rangesOverlap(
-      candidate.x,
-      candidate.x + candidate.length,
-      other.x,
-      other.x + other.length
-    );
-
-    if (overlapX) {
+    if (
+      rangesOverlap(
+        candidate.x,
+        candidate.x + footprint.length,
+        other.x,
+        other.x + other.length
+      )
+    ) {
       const before = candidate.y - (other.y + other.width);
-      const after = other.y - (candidate.y + candidate.width);
+      const after = other.y - (candidate.y + footprint.width);
 
       if (before >= -0.0001) nearest = Math.min(nearest, Math.max(0, before));
       if (after >= -0.0001) nearest = Math.min(nearest, Math.max(0, after));

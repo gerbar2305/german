@@ -1,5 +1,6 @@
 import { isValidPlacement } from "./CollisionDetector.js";
 import { getSnappedCandidate } from "./SnapController.js";
+import { getRotatedFootprint } from "./ViewerUtils.js";
 
 const SNAP_THRESHOLD = 0.05;
 
@@ -12,16 +13,24 @@ export function calculateDragPlacement({
   movingIndex,
   capacity,
 }) {
+  const rotationY = Number(dimensions.rotationY || 0);
+  const footprint = getRotatedFootprint(
+    dimensions.length,
+    dimensions.width,
+    rotationY
+  );
+
   const centerX = intersectionPoint.x - dragOffset.x;
   const centerZ = intersectionPoint.z - dragOffset.z;
 
   const rawCandidate = {
-    x: centerX - dimensions.length / 2,
-    y: centerZ - dimensions.width / 2,
+    x: centerX - footprint.length / 2,
+    y: centerZ - footprint.width / 2,
     z: Number(currentZ || 0),
     length: dimensions.length,
     width: dimensions.width,
     height: dimensions.height,
+    rotationY,
   };
 
   const candidate = getSnappedCandidate({
@@ -32,14 +41,15 @@ export function calculateDragPlacement({
     threshold: SNAP_THRESHOLD,
   });
 
-  const valid = isValidPlacement({
+  return {
     candidate,
-    placedItems,
-    movingIndex,
-    capacity,
-  });
-
-  return { candidate, valid };
+    valid: isValidPlacement({
+      candidate,
+      placedItems,
+      movingIndex,
+      capacity,
+    }),
+  };
 }
 
 export function applyDragPreview({
@@ -49,12 +59,16 @@ export function applyDragPreview({
   dimensions,
   valid,
 }) {
-  mesh.position.x = candidate.x + dimensions.length / 2;
-  mesh.position.z = candidate.y + dimensions.width / 2;
+  const footprint = getRotatedFootprint(
+    dimensions.length,
+    dimensions.width,
+    candidate.rotationY
+  );
 
-  if (outline) {
-    outline.position.copy(mesh.position);
-  }
+  mesh.position.x = candidate.x + footprint.length / 2;
+  mesh.position.z = candidate.y + footprint.width / 2;
+
+  if (outline) outline.position.copy(mesh.position);
 
   mesh.material.color.set(valid ? "#22c55e" : "#ef4444");
   mesh.material.emissive.set(valid ? "#14532d" : "#7f1d1d");
@@ -69,16 +83,14 @@ export function updateDraggedItem({
   movingIndex,
   position,
 }) {
-  return placedItems.map((item, index) => {
-    if (index !== movingIndex) {
-      return item;
-    }
-
-    return {
-      ...item,
-      x: Number(position.x.toFixed(4)),
-      y: Number(position.y.toFixed(4)),
-      z: Number(position.z.toFixed(4)),
-    };
-  });
+  return placedItems.map((item, index) =>
+    index === movingIndex
+      ? {
+          ...item,
+          x: Number(position.x.toFixed(4)),
+          y: Number(position.y.toFixed(4)),
+          z: Number(position.z.toFixed(4)),
+        }
+      : item
+  );
 }
