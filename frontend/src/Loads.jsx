@@ -2,23 +2,50 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const API_URL = "http://127.0.0.1:8000/api/v1";
 
+const EMPTY_FORM = {
+  reference: "",
+  client_name: "",
+  project_name: "",
+  vessel_name: "",
+  voyage_number: "",
+  booking_number: "",
+  loading_port: "",
+  destination_port: "",
+  loading_date: "",
+  sailing_date: "",
+  carrier_name: "",
+  operator_name: "",
+  notes: "",
+  vehicle_id: "",
+  container_id: "",
+};
+
+function toDateTimeLocal(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function statusText(status) {
+  if (status === "optimized") return "Optimizada";
+  if (status === "warning") return "Con advertencias";
+  if (status === "error") return "Error";
+  return "Pendiente";
+}
+
 export default function Loads({ token, onCountChange }) {
   const [loads, setLoads] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [containers, setContainers] = useState([]);
   const [products, setProducts] = useState([]);
-
-  const [reference, setReference] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [projectName, setProjectName] = useState("");
-  const [notes, setNotes] = useState("");
+  const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
-  const [vehicleId, setVehicleId] = useState("");
-  const [containerId, setContainerId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [items, setItems] = useState([]);
-
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -40,23 +67,19 @@ export default function Loads({ token, onCountChange }) {
 
   async function loadData() {
     try {
-      const [
-        loadsData,
-        vehiclesData,
-        containersData,
-        productsData,
-      ] = await Promise.all([
-        fetchList("loads"),
-        fetchList("vehicles"),
-        fetchList("containers"),
-        fetchList("products"),
-      ]);
+      const [loadsData, vehiclesData, containersData, productsData] =
+        await Promise.all([
+          fetchList("loads"),
+          fetchList("vehicles"),
+          fetchList("containers"),
+          fetchList("products"),
+        ]);
 
       setLoads(loadsData);
       setVehicles(vehiclesData);
       setContainers(containersData);
       setProducts(productsData);
-      onCountChange(loadsData.length);
+      onCountChange?.(loadsData.length);
     } catch (error) {
       setMessage(error.message);
     }
@@ -66,51 +89,74 @@ export default function Loads({ token, onCountChange }) {
     loadData();
   }, []);
 
+  function handleFormChange(event) {
+    const { name, value } = event.target;
+
+    if (name === "vehicle_id" && value) {
+      setForm((current) => ({
+        ...current,
+        vehicle_id: value,
+        container_id: "",
+      }));
+      return;
+    }
+
+    if (name === "container_id" && value) {
+      setForm((current) => ({
+        ...current,
+        container_id: value,
+        vehicle_id: "",
+      }));
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
   function addProduct() {
-    if (!selectedProductId) {
+    const product = products.find(
+      (item) => item.id === Number(selectedProductId)
+    );
+    const numericQuantity = Number(quantity);
+
+    if (!product) {
       setMessage("Selecciona un producto.");
       return;
     }
 
-    if (Number(quantity) < 1) {
+    if (!Number.isInteger(numericQuantity) || numericQuantity < 1) {
       setMessage("La cantidad debe ser mayor que cero.");
       return;
     }
 
-    const product = products.find(
-      (item) => item.id === Number(selectedProductId)
-    );
+    setItems((current) => {
+      const existing = current.find(
+        (item) => item.product_id === product.id
+      );
 
-    if (!product) {
-      setMessage("Producto no encontrado.");
-      return;
-    }
-
-    const existingItem = items.find(
-      (item) => item.product_id === product.id
-    );
-
-    if (existingItem) {
-      setItems((current) =>
-        current.map((item) =>
+      if (existing) {
+        return current.map((item) =>
           item.product_id === product.id
             ? {
                 ...item,
-                quantity: item.quantity + Number(quantity),
+                quantity: item.quantity + numericQuantity,
               }
             : item
-        )
-      );
-    } else {
-      setItems((current) => [
+        );
+      }
+
+      return [
         ...current,
         {
           product_id: product.id,
-          quantity: Number(quantity),
+          quantity: numericQuantity,
           product,
         },
-      ]);
-    }
+      ];
+    });
 
     setSelectedProductId("");
     setQuantity(1);
@@ -123,48 +169,49 @@ export default function Loads({ token, onCountChange }) {
     );
   }
 
-  const totals = useMemo(() => {
-    return items.reduce(
-      (result, item) => {
-        const unitVolume =
-          item.product.length_m *
-          item.product.width_m *
-          item.product.height_m;
+  const totals = useMemo(
+    () =>
+      items.reduce(
+        (result, item) => {
+          const product = item.product;
+          if (!product) return result;
 
-        result.weight += item.product.weight_kg * item.quantity;
-        result.volume += unitVolume * item.quantity;
-        result.units += item.quantity;
+          const unitVolume =
+            Number(product.length_m || 0) *
+            Number(product.width_m || 0) *
+            Number(product.height_m || 0);
 
-        return result;
-      },
-      {
-        weight: 0,
-        volume: 0,
-        units: 0,
-      }
-    );
-  }, [items]);
+          result.weight +=
+            Number(product.weight_kg || 0) * item.quantity;
+          result.volume += unitVolume * item.quantity;
+          result.units += item.quantity;
+          return result;
+        },
+        { weight: 0, volume: 0, units: 0 }
+      ),
+    [items]
+  );
 
   const selectedCapacity = useMemo(() => {
-    if (containerId) {
+    if (form.container_id) {
       return containers.find(
-        (item) => item.id === Number(containerId)
+        (item) => item.id === Number(form.container_id)
       );
     }
 
-    if (vehicleId) {
+    if (form.vehicle_id) {
       return vehicles.find(
-        (item) => item.id === Number(vehicleId)
+        (item) => item.id === Number(form.vehicle_id)
       );
     }
 
     return null;
-  }, [containerId, vehicleId, containers, vehicles]);
+  }, [form.container_id, form.vehicle_id, containers, vehicles]);
 
   const capacityVolume = selectedCapacity
-    ? selectedCapacity.internal_length_m *
-      selectedCapacity.internal_width_m *
-      selectedCapacity.internal_height_m
+    ? Number(selectedCapacity.internal_length_m || 0) *
+      Number(selectedCapacity.internal_width_m || 0) *
+      Number(selectedCapacity.internal_height_m || 0)
     : 0;
 
   const volumePercentage =
@@ -173,24 +220,67 @@ export default function Loads({ token, onCountChange }) {
       : 0;
 
   const weightPercentage =
-    selectedCapacity?.max_payload_kg > 0
-      ? (totals.weight / selectedCapacity.max_payload_kg) * 100
+    Number(selectedCapacity?.max_payload_kg || 0) > 0
+      ? (totals.weight / Number(selectedCapacity.max_payload_kg)) * 100
       : 0;
 
-  async function createLoad(event) {
+  function resetForm() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setSelectedProductId("");
+    setQuantity(1);
+    setItems([]);
+  }
+
+  function startEditing(load) {
+    setEditingId(load.id);
+    setMessage("");
+
+    setForm({
+      reference: load.reference || "",
+      client_name: load.client_name || "",
+      project_name: load.project_name || "",
+      vessel_name: load.vessel_name || "",
+      voyage_number: load.voyage_number || "",
+      booking_number: load.booking_number || "",
+      loading_port: load.loading_port || "",
+      destination_port: load.destination_port || "",
+      loading_date: toDateTimeLocal(load.loading_date),
+      sailing_date: toDateTimeLocal(load.sailing_date),
+      carrier_name: load.carrier_name || "",
+      operator_name: load.operator_name || "",
+      notes: load.notes || "",
+      vehicle_id: load.vehicle_id ? String(load.vehicle_id) : "",
+      container_id: load.container_id ? String(load.container_id) : "",
+    });
+
+    setItems(
+      load.items.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        product: products.find(
+          (product) => product.id === item.product_id
+        ),
+      }))
+    );
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveLoad(event) {
     event.preventDefault();
 
-    if (!reference.trim()) {
-      setMessage("Ingresa una referencia para la carga.");
+    if (!form.reference.trim()) {
+      setMessage("Ingresa una referencia.");
       return;
     }
 
-    if (!clientName.trim()) {
-      setMessage("Ingresa el nombre del cliente.");
+    if (!form.client_name.trim()) {
+      setMessage("Ingresa el cliente.");
       return;
     }
 
-    if (!vehicleId && !containerId) {
+    if (!form.vehicle_id && !form.container_id) {
       setMessage("Selecciona un vehículo o un contenedor.");
       return;
     }
@@ -204,17 +294,23 @@ export default function Loads({ token, onCountChange }) {
     setMessage("");
 
     const payload = {
-      reference: reference.trim(),
-      client_name: clientName.trim(),
-      project_name: projectName.trim(),
-      notes: notes.trim(),
-      vehicle_id: vehicleId ? Number(vehicleId) : null,
-      container_id: containerId ? Number(containerId) : null,
+      ...form,
+      reference: form.reference.trim(),
+      client_name: form.client_name.trim(),
+      project_name: form.project_name.trim(),
+      loading_date: form.loading_date || null,
+      sailing_date: form.sailing_date || null,
+      vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null,
+      container_id: form.container_id ? Number(form.container_id) : null,
       items: items.map((item) => ({
         product_id: item.product_id,
         quantity: item.quantity,
       })),
     };
+
+    if (editingId) {
+      payload.status = "pending";
+    }
 
     try {
       const response = await fetch(
@@ -222,93 +318,37 @@ export default function Loads({ token, onCountChange }) {
           ? `${API_URL}/loads/${editingId}`
           : `${API_URL}/loads`,
         {
-        method: editingId ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders,
-        },
-        body: JSON.stringify(
-          editingId
-            ? { ...payload, status: "pending" }
-            : payload
-        ),
-      });
+          method: editingId ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        const detail =
+        throw new Error(
           typeof data.detail === "string"
             ? data.detail
-            : "No fue posible crear la carga";
-
-        throw new Error(detail);
+            : "No fue posible guardar la orden."
+        );
       }
 
-      setReference("");
-      setClientName("");
-      setProjectName("");
-      setNotes("");
-      setVehicleId("");
-      setContainerId("");
-      setItems([]);
-      setEditingId(null);
+      resetForm();
       setMessage(
         editingId
-          ? "Orden de carga actualizada."
-          : "Orden de carga creada como pendiente."
+          ? "Orden logística actualizada."
+          : "Orden logística creada."
       );
-
       await loadData();
     } catch (error) {
       setMessage(error.message);
     } finally {
       setLoading(false);
     }
-  }
-
-  function getProduct(productId) {
-    return products.find((product) => product.id === productId);
-  }
-
-  function getVehicle(vehicleIdValue) {
-    return vehicles.find((vehicle) => vehicle.id === vehicleIdValue);
-  }
-
-  function getContainer(containerIdValue) {
-    return containers.find(
-      (container) => container.id === containerIdValue
-    );
-  }
-
-  function startEditing(load) {
-    setEditingId(load.id);
-    setReference(load.reference || "");
-    setClientName(load.client_name || "");
-    setProjectName(load.project_name || "");
-    setNotes(load.notes || "");
-    setVehicleId(load.vehicle_id ? String(load.vehicle_id) : "");
-    setContainerId(load.container_id ? String(load.container_id) : "");
-    setItems(
-      load.items.map((item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        product: getProduct(item.product_id),
-      }))
-    );
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function cancelEditing() {
-    setEditingId(null);
-    setReference("");
-    setClientName("");
-    setProjectName("");
-    setNotes("");
-    setVehicleId("");
-    setContainerId("");
-    setItems([]);
-    setMessage("");
   }
 
   async function deleteLoad(loadId) {
@@ -320,116 +360,226 @@ export default function Loads({ token, onCountChange }) {
     });
 
     if (!response.ok) {
-      setMessage("No fue posible eliminar la carga.");
+      setMessage("No fue posible eliminar la orden.");
       return;
     }
 
-    if (editingId === loadId) cancelEditing();
+    if (editingId === loadId) resetForm();
     await loadData();
-    setMessage("Orden de carga eliminada.");
+    setMessage("Orden eliminada.");
+  }
+
+  function getUnitName(load) {
+    if (load.container_id) {
+      return (
+        containers.find((item) => item.id === load.container_id)?.code ||
+        "Contenedor"
+      );
+    }
+
+    return (
+      vehicles.find((item) => item.id === load.vehicle_id)?.name ||
+      "Vehículo"
+    );
   }
 
   return (
     <div className="module-page">
       <section className="load-layout">
-        <form className="form-card load-form" onSubmit={createLoad}>
-          <h2>{editingId ? "Editar orden de carga" : "Nueva orden de carga"}</h2>
+        <form className="form-card load-form" onSubmit={saveLoad}>
+          <h2>
+            {editingId
+              ? "Editar orden logística"
+              : "Nueva orden logística"}
+          </h2>
 
-          <label htmlFor="reference">Referencia</label>
-          <input
-            id="reference"
-            value={reference}
-            onChange={(event) => setReference(event.target.value)}
-            placeholder="Ejemplo: CARGA-001"
-            required
-          />
+          <div className="load-form-grid">
+            <label>
+              Referencia
+              <input
+                name="reference"
+                value={form.reference}
+                onChange={handleFormChange}
+                required
+              />
+            </label>
 
-          <label htmlFor="client_name">Cliente</label>
-          <input
-            id="client_name"
-            value={clientName}
-            onChange={(event) => setClientName(event.target.value)}
-            placeholder="Ejemplo: INMOVE"
-            required
-          />
+            <label>
+              Cliente
+              <input
+                name="client_name"
+                value={form.client_name}
+                onChange={handleFormChange}
+                required
+              />
+            </label>
 
-          <label htmlFor="project_name">Proyecto / operación</label>
-          <input
-            id="project_name"
-            value={projectName}
-            onChange={(event) => setProjectName(event.target.value)}
-            placeholder="Ejemplo: Exportación Brasil"
-          />
+            <label>
+              Proyecto / operación
+              <input
+                name="project_name"
+                value={form.project_name}
+                onChange={handleFormChange}
+              />
+            </label>
 
-          <label htmlFor="notes">Observaciones</label>
-          <textarea
-            id="notes"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows="4"
-            placeholder="Indicaciones especiales de la operación"
-          />
+            <label>
+              Booking
+              <input
+                name="booking_number"
+                value={form.booking_number}
+                onChange={handleFormChange}
+              />
+            </label>
 
-          <label htmlFor="vehicle">Vehículo</label>
-          <select
-            id="vehicle"
-            value={vehicleId}
-            onChange={(event) => setVehicleId(event.target.value)}
-          >
-            <option value="">Sin vehículo</option>
+            <label>
+              Buque
+              <input
+                name="vessel_name"
+                value={form.vessel_name}
+                onChange={handleFormChange}
+              />
+            </label>
 
-            {vehicles.map((vehicle) => (
-              <option key={vehicle.id} value={vehicle.id}>
-                {vehicle.name} · {vehicle.plate}
-              </option>
-            ))}
-          </select>
+            <label>
+              Viaje
+              <input
+                name="voyage_number"
+                value={form.voyage_number}
+                onChange={handleFormChange}
+              />
+            </label>
 
-          <label htmlFor="container">Contenedor</label>
-          <select
-            id="container"
-            value={containerId}
-            onChange={(event) => setContainerId(event.target.value)}
-          >
-            <option value="">Sin contenedor</option>
+            <label>
+              Puerto de carga
+              <input
+                name="loading_port"
+                value={form.loading_port}
+                onChange={handleFormChange}
+              />
+            </label>
 
-            {containers.map((container) => (
-              <option key={container.id} value={container.id}>
-                {container.code} · {container.container_type}
-              </option>
-            ))}
-          </select>
+            <label>
+              Puerto de destino
+              <input
+                name="destination_port"
+                value={form.destination_port}
+                onChange={handleFormChange}
+              />
+            </label>
+
+            <label>
+              Fecha de carga
+              <input
+                name="loading_date"
+                type="datetime-local"
+                value={form.loading_date}
+                onChange={handleFormChange}
+              />
+            </label>
+
+            <label>
+              Fecha de zarpe
+              <input
+                name="sailing_date"
+                type="datetime-local"
+                value={form.sailing_date}
+                onChange={handleFormChange}
+              />
+            </label>
+
+            <label>
+              Transportista
+              <input
+                name="carrier_name"
+                value={form.carrier_name}
+                onChange={handleFormChange}
+              />
+            </label>
+
+            <label>
+              Operador responsable
+              <input
+                name="operator_name"
+                value={form.operator_name}
+                onChange={handleFormChange}
+              />
+            </label>
+          </div>
+
+          <label>
+            Vehículo
+            <select
+              name="vehicle_id"
+              value={form.vehicle_id}
+              onChange={handleFormChange}
+            >
+              <option value="">Sin vehículo</option>
+              {vehicles.map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.name} · {vehicle.plate}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Contenedor
+            <select
+              name="container_id"
+              value={form.container_id}
+              onChange={handleFormChange}
+            >
+              <option value="">Sin contenedor</option>
+              {containers.map((container) => (
+                <option key={container.id} value={container.id}>
+                  {container.code} · {container.container_type}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Observaciones
+            <textarea
+              name="notes"
+              value={form.notes}
+              onChange={handleFormChange}
+              rows="4"
+            />
+          </label>
 
           <hr className="form-divider" />
 
           <h3>Agregar productos</h3>
 
-          <label htmlFor="product">Producto</label>
-          <select
-            id="product"
-            value={selectedProductId}
-            onChange={(event) =>
-              setSelectedProductId(event.target.value)
-            }
-          >
-            <option value="">Seleccionar producto</option>
+          <label>
+            Producto
+            <select
+              value={selectedProductId}
+              onChange={(event) =>
+                setSelectedProductId(event.target.value)
+              }
+            >
+              <option value="">Seleccionar producto</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.sku} · {product.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.sku} · {product.name}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="quantity">Cantidad</label>
-          <input
-            id="quantity"
-            type="number"
-            min="1"
-            step="1"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-          />
+          <label>
+            Cantidad
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+          </label>
 
           <button
             type="button"
@@ -444,14 +594,14 @@ export default function Loads({ token, onCountChange }) {
               ? "Guardando..."
               : editingId
                 ? "Guardar cambios"
-                : "Guardar orden pendiente"}
+                : "Guardar orden"}
           </button>
 
           {editingId && (
             <button
               type="button"
-              className="secondary-action"
-              onClick={cancelEditing}
+              className="secondary-form-button"
+              onClick={resetForm}
             >
               Cancelar edición
             </button>
@@ -463,15 +613,14 @@ export default function Loads({ token, onCountChange }) {
         <div className="load-content">
           <section className="table-card">
             <div className="table-heading">
-              <h2>Productos de la carga</h2>
+              <h2>Productos de la orden</h2>
               <span>{totals.units} unidades</span>
             </div>
 
             {items.length === 0 ? (
               <div className="empty-state compact-empty">
                 <span>📦</span>
-                <h3>La carga está vacía</h3>
-                <p>Selecciona productos y cantidades.</p>
+                <h3>La orden está vacía</h3>
               </div>
             ) : (
               <div className="table-wrapper">
@@ -485,64 +634,37 @@ export default function Loads({ token, onCountChange }) {
                       <th></th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {items.map((item) => {
+                      const product = item.product;
                       const productVolume =
-                        item.product.length_m *
-                        item.product.width_m *
-                        item.product.height_m;
+                        Number(product?.length_m || 0) *
+                        Number(product?.width_m || 0) *
+                        Number(product?.height_m || 0);
 
                       return (
                         <tr key={item.product_id}>
                           <td>
-                            {item.product.sku} · {item.product.name}
+                            {product?.sku} · {product?.name}
                           </td>
-
                           <td>{item.quantity}</td>
-
                           <td>
                             {(
-                              item.product.weight_kg * item.quantity
-                            ).toLocaleString()}{" "}
-                            kg
+                              Number(product?.weight_kg || 0) *
+                              item.quantity
+                            ).toLocaleString("es-UY")} kg
                           </td>
-
                           <td>
-                            {(
-                              productVolume * item.quantity
-                            ).toFixed(3)}{" "}
-                            m³
+                            {(productVolume * item.quantity).toFixed(3)} m³
                           </td>
-
                           <td>
                             <button
                               type="button"
                               className="delete-button"
-                              onClick={() =>
-                                removeItem(item.product_id)
-                              }
+                              onClick={() => removeItem(item.product_id)}
                             >
                               Quitar
                             </button>
-                          </td>
-                          <td>
-                            <div className="table-actions">
-                              <button
-                                type="button"
-                                className="edit-button"
-                                onClick={() => startEditing(load)}
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                className="delete-button"
-                                onClick={() => deleteLoad(load.id)}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
                           </td>
                         </tr>
                       );
@@ -558,108 +680,85 @@ export default function Loads({ token, onCountChange }) {
               <span>Unidades</span>
               <strong>{totals.units}</strong>
             </article>
-
             <article>
               <span>Peso total</span>
-              <strong>{totals.weight.toLocaleString()} kg</strong>
+              <strong>{totals.weight.toLocaleString("es-UY")} kg</strong>
             </article>
-
             <article>
               <span>Volumen total</span>
               <strong>{totals.volume.toFixed(3)} m³</strong>
             </article>
-
             <article>
               <span>Ocupación estimada</span>
               <strong>{volumePercentage.toFixed(1)}%</strong>
             </article>
-
             <article>
               <span>Capacidad de peso</span>
               <strong>{weightPercentage.toFixed(1)}%</strong>
             </article>
           </section>
 
-          {(volumePercentage > 100 || weightPercentage > 100) && (
-            <div className="capacity-warning">
-              ⚠️ La carga supera la capacidad seleccionada.
-            </div>
-          )}
-
           <section className="table-card">
             <div className="table-heading">
-              <h2>Cargas registradas</h2>
-              <span>{loads.length} cargas</span>
+              <h2>Órdenes logísticas</h2>
+              <span>{loads.length} órdenes</span>
             </div>
 
-            {loads.length === 0 ? (
-              <div className="empty-state compact-empty">
-                <span>🚚</span>
-                <h3>No hay cargas registradas</h3>
-              </div>
-            ) : (
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Referencia</th>
-                      <th>Cliente</th>
-                      <th>Proyecto</th>
-                      <th>Estado</th>
-                      <th>Unidad</th>
-                      <th>Productos</th>
-                      <th></th>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Referencia</th>
+                    <th>Cliente</th>
+                    <th>Booking</th>
+                    <th>Ruta</th>
+                    <th>Estado</th>
+                    <th>Unidad</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loads.map((load) => (
+                    <tr key={load.id}>
+                      <td><strong>{load.reference}</strong></td>
+                      <td>{load.client_name || "—"}</td>
+                      <td>{load.booking_number || "—"}</td>
+                      <td>
+                        {(load.loading_port || "—")}
+                        {" → "}
+                        {(load.destination_port || "—")}
+                      </td>
+                      <td>
+                        <span
+                          className={`load-status load-status-${load.status || "pending"}`}
+                        >
+                          {statusText(load.status)}
+                        </span>
+                      </td>
+                      <td>{getUnitName(load)}</td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="edit-button"
+                            onClick={() => startEditing(load)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="delete-button"
+                            onClick={() => deleteLoad(load.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-
-                  <tbody>
-                    {loads.map((load) => {
-                      const vehicle = getVehicle(load.vehicle_id);
-                      const container = getContainer(load.container_id);
-
-                      return (
-                        <tr key={load.id}>
-                          <td><strong>{load.reference}</strong></td>
-                          <td>{load.client_name || "—"}</td>
-                          <td>{load.project_name || "—"}</td>
-                          <td>
-                            <span className={`load-status load-status-${load.status || "pending"}`}>
-                              {load.status === "optimized"
-                                ? "Optimizada"
-                                : load.status === "error"
-                                  ? "Error"
-                                  : "Pendiente"}
-                            </span>
-                          </td>
-
-                          <td>
-                            {container
-                              ? container.code
-                              : vehicle
-                                ? vehicle.name
-                                : "Sin asignar"}
-                          </td>
-
-                          <td>
-                            {load.items.map((item) => {
-                              const product = getProduct(item.product_id);
-
-                              return (
-                                <div key={item.id}>
-                                  {product?.name || `Producto ${item.product_id}`}
-                                  {" × "}
-                                  {item.quantity}
-                                </div>
-                              );
-                            })}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         </div>
       </section>

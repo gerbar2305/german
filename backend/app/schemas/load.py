@@ -1,18 +1,32 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 
 class LoadItemCreate(BaseModel):
     product_id: int
     quantity: int = Field(gt=0)
 
+
 class LoadItemRead(LoadItemCreate):
     id: int
+
     model_config = ConfigDict(from_attributes=True)
 
+
 class LoadCreate(BaseModel):
-    reference: str
-    client_name: str = ""
-    project_name: str = ""
+    reference: str = Field(min_length=1, max_length=80)
+    client_name: str = Field(default="", max_length=120)
+    project_name: str = Field(default="", max_length=160)
+    vessel_name: str = Field(default="", max_length=120)
+    voyage_number: str = Field(default="", max_length=80)
+    booking_number: str = Field(default="", max_length=100)
+    loading_port: str = Field(default="", max_length=120)
+    destination_port: str = Field(default="", max_length=120)
+    loading_date: datetime | None = None
+    sailing_date: datetime | None = None
+    carrier_name: str = Field(default="", max_length=120)
+    operator_name: str = Field(default="", max_length=120)
     notes: str = ""
     vehicle_id: int | None = None
     container_id: int | None = None
@@ -26,8 +40,10 @@ class LoadCreate(BaseModel):
             raise ValueError("Agrega al menos un producto.")
         return self
 
+
 class LoadUpdate(LoadCreate):
     status: str = "pending"
+
 
 class LoadOptimizationUpdate(BaseModel):
     status: str
@@ -39,11 +55,21 @@ class LoadOptimizationUpdate(BaseModel):
     optimized_at: datetime | None = None
     report_path: str = ""
 
+
 class LoadRead(BaseModel):
     id: int
     reference: str
     client_name: str
     project_name: str
+    vessel_name: str
+    voyage_number: str
+    booking_number: str
+    loading_port: str
+    destination_port: str
+    loading_date: datetime | None
+    sailing_date: datetime | None
+    carrier_name: str
+    operator_name: str
     notes: str
     status: str
     vehicle_id: int | None
@@ -58,4 +84,5 @@ class LoadRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[LoadItemRead]
+
     model_config = ConfigDict(from_attributes=True)

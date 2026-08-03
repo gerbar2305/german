@@ -444,6 +444,21 @@ export default function Optimizer({ token }) {
         volumePercentage,
       },
       weightBalance,
+      logistics: selectedLoad
+        ? {
+            reference: selectedLoad.reference,
+            bookingNumber: selectedLoad.booking_number,
+            vesselName: selectedLoad.vessel_name,
+            voyageNumber: selectedLoad.voyage_number,
+            loadingPort: selectedLoad.loading_port,
+            destinationPort: selectedLoad.destination_port,
+            loadingDate: selectedLoad.loading_date,
+            sailingDate: selectedLoad.sailing_date,
+            carrierName: selectedLoad.carrier_name,
+            operatorName: selectedLoad.operator_name,
+            notes: selectedLoad.notes,
+          }
+        : {},
     });
   }
 
@@ -497,6 +512,23 @@ export default function Optimizer({ token }) {
               <span>
                 Estado: {selectedLoad.status || "pending"}
               </span>
+              {selectedLoad.booking_number && (
+                <span>Booking: {selectedLoad.booking_number}</span>
+              )}
+              {(selectedLoad.loading_port || selectedLoad.destination_port) && (
+                <span>
+                  Ruta: {selectedLoad.loading_port || "—"} →{" "}
+                  {selectedLoad.destination_port || "—"}
+                </span>
+              )}
+              {selectedLoad.vessel_name && (
+                <span>
+                  Buque: {selectedLoad.vessel_name}
+                  {selectedLoad.voyage_number
+                    ? ` · Viaje ${selectedLoad.voyage_number}`
+                    : ""}
+                </span>
+              )}
             </div>
           )}
 

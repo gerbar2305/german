@@ -12,6 +12,17 @@ function formatNumber(value, decimals = 1) {
   return Number.isFinite(number) ? number.toFixed(decimals) : "0";
 }
 
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return new Intl.DateTimeFormat("es-UY", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
 function getCapacityName(capacity, unitType) {
   return (
     capacity?.name ||
@@ -56,6 +67,7 @@ export function generateLoadReport({
   viewerImage = "",
   stats,
   weightBalance,
+  logistics = {},
 }) {
   const reportWindow = window.open("", "_blank", "width=1100,height=850");
 
@@ -121,103 +133,30 @@ export function generateLoadReport({
   <style>
     @page { size: A4; margin: 14mm; }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      color: #172033;
-      background: #fff;
-      font-size: 12px;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      padding-bottom: 16px;
-      border-bottom: 3px solid #1d4ed8;
-    }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #172033; font-size: 12px; }
+    header { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 16px; border-bottom: 3px solid #1d4ed8; }
     .brand h1 { margin: 0; font-size: 25px; color: #0f172a; }
     .brand p { margin: 4px 0 0; color: #64748b; }
     .meta { text-align: right; line-height: 1.6; }
     h2 { margin: 20px 0 10px; font-size: 16px; color: #0f172a; }
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-top: 16px;
-    }
-    .card {
-      padding: 12px;
-      border: 1px solid #dbe3ee;
-      border-radius: 8px;
-      background: #f8fafc;
-    }
-    .card span { display: block; color: #64748b; font-size: 10px; }
-    .card strong { display: block; margin-top: 5px; font-size: 16px; }
-    .two-columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-    .panel {
-      padding: 12px;
-      border: 1px solid #dbe3ee;
-      border-radius: 8px;
-      background: #fff;
-    }
+    .cards, .logistics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .card, .logistics-item { padding: 12px; border: 1px solid #dbe3ee; border-radius: 8px; background: #f8fafc; }
+    .card span, .logistics-item span { display: block; color: #64748b; font-size: 10px; }
+    .card strong, .logistics-item strong { display: block; margin-top: 5px; font-size: 14px; }
+    .two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .panel { padding: 12px; border: 1px solid #dbe3ee; border-radius: 8px; }
     .panel p { margin: 5px 0; }
-    .image-section img {
-      display: block;
-      width: 100%;
-      max-height: 390px;
-      object-fit: contain;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      background: #eef2f6;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-    }
-    th, td {
-      padding: 8px;
-      border: 1px solid #dbe3ee;
-      text-align: left;
-      vertical-align: top;
-    }
+    .image-section img { display: block; width: 100%; max-height: 390px; object-fit: contain; border: 1px solid #cbd5e1; border-radius: 8px; background: #eef2f6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 8px; border: 1px solid #dbe3ee; text-align: left; vertical-align: top; }
     th { background: #eff6ff; color: #1e3a8a; }
     .number { text-align: right; }
     .ok { color: #15803d; font-weight: 700; }
     .warning { color: #b45309; }
-    footer {
-      margin-top: 18px;
-      padding-top: 10px;
-      border-top: 1px solid #dbe3ee;
-      color: #64748b;
-      text-align: center;
-      font-size: 10px;
-    }
-    .print-actions {
-      position: fixed;
-      top: 12px;
-      right: 12px;
-      z-index: 10;
-      display: flex;
-      gap: 8px;
-    }
-    .print-actions button {
-      padding: 10px 14px;
-      border: 0;
-      border-radius: 7px;
-      background: #1d4ed8;
-      color: #fff;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    @media print {
-      .print-actions { display: none; }
-      section, .panel, table { break-inside: avoid; }
-    }
+    footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #dbe3ee; color: #64748b; text-align: center; font-size: 10px; }
+    .print-actions { position: fixed; top: 12px; right: 12px; z-index: 10; }
+    .print-actions button { padding: 10px 14px; border: 0; border-radius: 7px; background: #1d4ed8; color: #fff; font-weight: 700; cursor: pointer; }
+    @media print { .print-actions { display: none; } section, .panel, table { break-inside: avoid; } }
   </style>
 </head>
 <body>
@@ -233,9 +172,25 @@ export function generateLoadReport({
     <div class="meta">
       <strong>Cliente:</strong> ${escapeHtml(client)}<br />
       <strong>Proyecto:</strong> ${escapeHtml(project)}<br />
-      <strong>Fecha:</strong> ${escapeHtml(date)}
+      <strong>Referencia:</strong> ${escapeHtml(logistics.reference || "—")}<br />
+      <strong>Fecha del informe:</strong> ${escapeHtml(date)}
     </div>
   </header>
+
+  <section>
+    <h2>Datos logísticos</h2>
+    <div class="logistics-grid">
+      <div class="logistics-item"><span>BOOKING</span><strong>${escapeHtml(logistics.bookingNumber || "—")}</strong></div>
+      <div class="logistics-item"><span>BUQUE</span><strong>${escapeHtml(logistics.vesselName || "—")}</strong></div>
+      <div class="logistics-item"><span>VIAJE</span><strong>${escapeHtml(logistics.voyageNumber || "—")}</strong></div>
+      <div class="logistics-item"><span>PUERTO DE CARGA</span><strong>${escapeHtml(logistics.loadingPort || "—")}</strong></div>
+      <div class="logistics-item"><span>PUERTO DE DESTINO</span><strong>${escapeHtml(logistics.destinationPort || "—")}</strong></div>
+      <div class="logistics-item"><span>FECHA DE CARGA</span><strong>${escapeHtml(formatDate(logistics.loadingDate))}</strong></div>
+      <div class="logistics-item"><span>FECHA DE ZARPE</span><strong>${escapeHtml(formatDate(logistics.sailingDate))}</strong></div>
+      <div class="logistics-item"><span>TRANSPORTISTA</span><strong>${escapeHtml(logistics.carrierName || "—")}</strong></div>
+      <div class="logistics-item"><span>OPERADOR</span><strong>${escapeHtml(logistics.operatorName || "—")}</strong></div>
+    </div>
+  </section>
 
   <section>
     <h2>Unidad seleccionada</h2>
@@ -256,7 +211,7 @@ export function generateLoadReport({
     <div class="card"><span>TARA / PESO PROPIO</span><strong>${formatNumber(stats?.tareWeight, 0)} kg</strong></div>
     <div class="card"><span>PESO BRUTO TOTAL</span><strong>${formatNumber(stats?.grossWeight, 0)} kg</strong></div>
     <div class="card"><span>VOLUMEN UTILIZADO</span><strong>${formatNumber(stats?.volumePercentage, 1)}%</strong></div>
-    <div class="card"><span>PESO DE CARGA UTILIZADO</span><strong>${stats?.maximumWeight ? `${formatNumber(stats?.weightPercentage, 1)}%` : "Sin límite"}</strong></div>
+    <div class="card"><span>PESO UTILIZADO</span><strong>${stats?.maximumWeight ? `${formatNumber(stats?.weightPercentage, 1)}%` : "Sin límite"}</strong></div>
   </div>
 
   ${imageSection}
@@ -301,6 +256,11 @@ export function generateLoadReport({
       </thead>
       <tbody>${rejectedRows}</tbody>
     </table>
+  </section>
+
+  <section>
+    <h2>Observaciones</h2>
+    <div class="panel">${escapeHtml(logistics.notes || "Sin observaciones.")}</div>
   </section>
 
   <footer>
