@@ -46,6 +46,104 @@ export default function LoadViewer3D({
     return ((number % 360) + 360) % 360;
   }
 
+  function emitItems(updatedItems) {
+    if (typeof onItemsChangeRef.current === "function") {
+      onItemsChangeRef.current(updatedItems);
+    }
+  }
+
+  function isItemLocked(item) {
+    return Boolean(item?.locked);
+  }
+
+  function toggleSelectedLock() {
+    if (selectedItemIndex === null || !placedItems[selectedItemIndex]) return;
+
+    emitItems(
+      placedItems.map((item, index) =>
+        index === selectedItemIndex
+          ? { ...item, locked: !item.locked }
+          : item
+      )
+    );
+  }
+
+  function deleteSelectedItem() {
+    if (selectedItemIndex === null || !placedItems[selectedItemIndex]) return;
+    if (!window.confirm("¿Eliminar este pallet del plan de carga?")) return;
+
+    const updatedItems = placedItems.filter(
+      (_, index) => index !== selectedItemIndex
+    );
+
+    setSelectedItemIndex(null);
+    emitItems(updatedItems);
+  }
+
+  function duplicateSelectedItem() {
+    if (selectedItemIndex === null || !placedItems[selectedItemIndex]) return;
+
+    const source = placedItems[selectedItemIndex];
+    const dimensions = getItemDimensions(source);
+    const rotationY = getRotationY(source);
+    const footprint = getRotatedFootprint(
+      dimensions.length,
+      dimensions.width,
+      rotationY
+    );
+
+    const offsets = [
+      [footprint.length + 0.05, 0],
+      [0, footprint.width + 0.05],
+      [-(footprint.length + 0.05), 0],
+      [0, -(footprint.width + 0.05)],
+    ];
+
+    let candidate = null;
+
+    for (const [dx, dy] of offsets) {
+      const nextCandidate = {
+        x: Number(source.x || 0) + dx,
+        y: Number(source.y || 0) + dy,
+        z: Number(source.z || 0),
+        length: dimensions.length,
+        width: dimensions.width,
+        height: dimensions.height,
+        rotationY,
+      };
+
+      if (
+        isValidPlacement({
+          candidate: nextCandidate,
+          placedItems,
+          movingIndex: null,
+          capacity,
+        })
+      ) {
+        candidate = nextCandidate;
+        break;
+      }
+    }
+
+    if (!candidate) {
+      window.alert("No hay espacio libre junto al pallet para duplicarlo.");
+      return;
+    }
+
+    const duplicatedItem = {
+      ...source,
+      x: Number(candidate.x.toFixed(4)),
+      y: Number(candidate.y.toFixed(4)),
+      z: Number(candidate.z.toFixed(4)),
+      instanceId: `${source.instanceId || source.id || "item"}-copy-${Date.now()}`,
+      locked: false,
+    };
+
+    const updatedItems = [...placedItems, duplicatedItem];
+    emitItems(updatedItems);
+    setSelectedItemIndex(updatedItems.length - 1);
+  }
+
   function applySelectedRotation(nextRotation) {
     if (
       selectedItemIndex === null ||
@@ -55,6 +153,11 @@ export default function LoadViewer3D({
     }
 
     const item = placedItems[selectedItemIndex];
+
+    if (isItemLocked(item)) {
+      window.alert("Este pallet está bloqueado.");
+      return;
+    }
 
     if (item.product?.rotatable === false) {
       window.alert("Este producto no permite rotación.");
@@ -133,6 +236,11 @@ export default function LoadViewer3D({
 
     const item = placedItems[selectedItemIndex];
 
+    if (isItemLocked(item)) {
+      window.alert("Este pallet está bloqueado.");
+      return;
+    }
+
     const candidate = {
       x: Number(item.x || 0),
       y: Number(item.y || 0),
@@ -196,6 +304,11 @@ export default function LoadViewer3D({
 
     const item = placedItems[selectedItemIndex];
 
+    if (isItemLocked(item)) {
+      window.alert("Este pallet está bloqueado.");
+      return;
+    }
+
     if (item.product?.tiltable === false) {
       window.alert(
         "Este producto debe permanecer vertical y no puede acostarse."
@@ -235,6 +348,11 @@ export default function LoadViewer3D({
     }
 
     const item = placedItems[selectedItemIndex];
+
+    if (isItemLocked(item)) {
+      window.alert("Este pallet está bloqueado.");
+      return;
+    }
 
     if (item.product?.tiltable === false) {
       window.alert(
@@ -663,6 +781,8 @@ useEffect(() => {
       const isSelected =
         index === selectedItemIndex;
 
+      const isLocked = isItemLocked(item);
+
       const originalColor =
         getProductColor(item, index);
 
@@ -670,7 +790,9 @@ useEffect(() => {
         new THREE.MeshStandardMaterial({
           color: isSelected
             ? "#facc15"
-            : originalColor,
+            : isLocked
+              ? "#64748b"
+              : originalColor,
           transparent: true,
           opacity: isSelected ? 1 : 0.88,
           roughness: 0.55,
@@ -708,6 +830,7 @@ useEffect(() => {
         dimensions,
         rotationY,
         footprint,
+        locked: isLocked,
       };
 
       productMeshes.push(box);
@@ -848,6 +971,11 @@ useEffect(() => {
       markSelected(index);
 
       const item = placedItems[index];
+
+      if (isItemLocked(item)) {
+        renderer.domElement.style.cursor = "not-allowed";
+        return;
+      }
 
       // Por ahora solo se mueven productos
       // apoyados directamente en el piso.
@@ -1344,6 +1472,12 @@ useEffect(() => {
                 {selectedItem.product?.name ||
                   "Producto"}
               </h3>
+
+              {selectedItem.locked && (
+                <span className="selected-item-locked-badge">
+                  🔒 Pallet bloqueado
+                </span>
+              )}
             </div>
 
             <button
@@ -1453,11 +1587,11 @@ useEffect(() => {
               <span>Movimiento</span>
 
               <strong>
-                {Number(
-                  selectedItem.z || 0
-                ) <= 0.0001
-                  ? "Se puede arrastrar"
-                  : "Producto apilado"}
+                {selectedItem.locked
+                  ? "Bloqueado"
+                  : Number(selectedItem.z || 0) <= 0.0001
+                    ? "Se puede arrastrar"
+                    : "Producto apilado"}
               </strong>
             </div>
           </div>
@@ -1469,6 +1603,33 @@ useEffect(() => {
           </p>
 
           <div className="selected-item-actions">
+            <div className="professional-item-toolbar">
+              <button
+                type="button"
+                onClick={toggleSelectedLock}
+                className={selectedItem.locked ? "locked-action" : ""}
+              >
+                {selectedItem.locked ? "🔓 Desbloquear" : "🔒 Bloquear"}
+              </button>
+
+              <button
+                type="button"
+                onClick={duplicateSelectedItem}
+                disabled={!editMode}
+              >
+                📄 Duplicar
+              </button>
+
+              <button
+                type="button"
+                onClick={deleteSelectedItem}
+                disabled={!editMode}
+                className="danger-editor-action"
+              >
+                🗑 Eliminar
+              </button>
+            </div>
+
             <div className="orientation-actions rotation-360-controls">
               <label className="rotation-select-label">
                 Rotación horizontal
@@ -1479,6 +1640,7 @@ useEffect(() => {
                   }
                   disabled={
                     !editMode ||
+                    selectedItem.locked ||
                     selectedItem.product?.rotatable === false
                   }
                 >
@@ -1496,7 +1658,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => rotateSelectedBy(-15)}
-                disabled={!editMode || selectedItem.product?.rotatable === false}
+                disabled={!editMode || selectedItem.locked || selectedItem.product?.rotatable === false}
               >
                 ↺ −15°
               </button>
@@ -1504,7 +1666,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => rotateSelectedBy(15)}
-                disabled={!editMode || selectedItem.product?.rotatable === false}
+                disabled={!editMode || selectedItem.locked || selectedItem.product?.rotatable === false}
               >
                 ↻ +15°
               </button>
@@ -1512,7 +1674,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => applySelectedRotation(0)}
-                disabled={!editMode || selectedItem.product?.rotatable === false}
+                disabled={!editMode || selectedItem.locked || selectedItem.product?.rotatable === false}
               >
                 Restablecer
               </button>
@@ -1520,7 +1682,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={laySelectedItemOnLength}
-                disabled={!editMode || selectedItem.product?.tiltable === false}
+                disabled={!editMode || selectedItem.locked || selectedItem.product?.tiltable === false}
               >
                 ▰ Acostar sobre largo
               </button>
@@ -1528,7 +1690,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={laySelectedItemOnWidth}
-                disabled={!editMode || selectedItem.product?.tiltable === false}
+                disabled={!editMode || selectedItem.locked || selectedItem.product?.tiltable === false}
               >
                 ▰ Acostar sobre ancho
               </button>

@@ -2242,3 +2242,138 @@ button.control-kpi-card:hover {
     flex: 1 1 140px;
   }
 }
+
+
+/* =========================
+   EDITOR PROFESIONAL v0.9
+========================= */
+
+.editor-history-button {
+  min-height: 42px;
+  padding: 10px 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-history-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.professional-item-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.professional-item-toolbar button {
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 8px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.professional-item-toolbar .locked-action {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.professional-item-toolbar .danger-editor-action {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.selected-item-locked-badge {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.selected-item-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+@media (max-width: 700px) {
+  .professional-item-toolbar button,
+  .editor-history-button {
+    flex: 1 1 120px;
+  }
+}
+
+
+/* =========================================================
+   GERBAR v1.0 - CORRECCIÓN DEFINITIVA DEL OPTIMIZADOR
+   Mantener este bloque al FINAL del archivo styles.css.
+========================================================= */
+
+.optimizer-page {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.optimizer-page > .page-heading {
+  display: none !important;
+}
+
+.optimizer-layout {
+  display: grid !important;
+  grid-template-columns: 380px minmax(0, 1fr) !important;
+  gap: 24px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  align-items: start !important;
+}
+
+.optimizer-card {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 22px !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+}
+
+.optimizer-viewer-card {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 22px !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+}
+
+.optimizer-card label,
+.optimizer-card select,
+.optimizer-card input,
+.optimizer-card button,
+.selected-products,
+.selected-product-row,
+.optimize-button {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+@media (max-width: 1050px) {
+  .optimizer-layout {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import LoadViewer3D from "./LoadViewer3D.jsx";
 import arrangeProducts from "./optimizer/arrangeProducts.js";
 import { calculateWeightBalance } from "./viewer/WeightBalanceController.js";
@@ -26,6 +26,9 @@ export default function Optimizer({ token }) {
     rejected: [],
   });
   const [error, setError] = useState("");
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyRef = useRef([]);
+  const applyingHistoryRef = useRef(false);
 
   useEffect(() => {
     if (!token) return;
@@ -192,6 +195,7 @@ export default function Optimizer({ token }) {
       orientation: item.orientation || "VERTICAL",
       color: item.color || "",
       reason: item.reason || "",
+      locked: Boolean(item.locked),
     });
 
     return {
@@ -226,17 +230,21 @@ export default function Optimizer({ token }) {
           ...item,
           product,
           rotationY: Number(item.rotationY || 0),
+          locked: Boolean(item.locked),
         };
       };
 
-      setOptimizationResult({
+      const restoredResult = {
         placed: Array.isArray(parsed.placed)
           ? parsed.placed.map(restoreItem)
           : [],
         rejected: Array.isArray(parsed.rejected)
           ? parsed.rejected.map(restoreItem)
           : [],
-      });
+      };
+
+      setOptimizationResult(restoredResult);
+      resetHistory(restoredResult);
 
       setPlanMessage("Plan guardado reabierto correctamente.");
       return true;
@@ -329,10 +337,62 @@ export default function Optimizer({ token }) {
     await handleOptimize();
   }
 
+  function resetHistory(result) {
+    historyRef.current = [
+      JSON.parse(JSON.stringify(result)),
+    ];
+    setHistoryIndex(0);
+  }
+
+  function pushHistory(result) {
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false;
+      return;
+    }
+
+    const current = historyRef.current.slice(0, historyIndex + 1);
+    current.push(JSON.parse(JSON.stringify(result)));
+
+    const limited = current.slice(-50);
+    historyRef.current = limited;
+    setHistoryIndex(limited.length - 1);
+  }
+
+  function undoPlanChange() {
+    if (historyIndex <= 0) return;
+
+    const nextIndex = historyIndex - 1;
+    applyingHistoryRef.current = true;
+    setOptimizationResult(
+      JSON.parse(JSON.stringify(historyRef.current[nextIndex]))
+    );
+    setHistoryIndex(nextIndex);
+    setPlanMessage("Cambio deshecho.");
+  }
+
+  function redoPlanChange() {
+    if (
+      historyIndex < 0 ||
+      historyIndex >= historyRef.current.length - 1
+    ) {
+      return;
+    }
+
+    const nextIndex = historyIndex + 1;
+    applyingHistoryRef.current = true;
+    setOptimizationResult(
+      JSON.parse(JSON.stringify(historyRef.current[nextIndex]))
+    );
+    setHistoryIndex(nextIndex);
+    setPlanMessage("Cambio rehecho.");
+  }
+
   function handleLoadSelection(event) {
     const loadId = event.target.value;
     setSelectedLoadId(loadId);
-    setOptimizationResult({ placed: [], rejected: [] });
+    const emptyResult = { placed: [], rejected: [] };
+    setOptimizationResult(emptyResult);
+    resetHistory(emptyResult);
     setError("");
     setPlanMessage("");
 
@@ -548,6 +608,7 @@ export default function Optimizer({ token }) {
     );
 
     setOptimizationResult(result);
+    resetHistory(result);
 
     if (selectedLoad) {
       await saveOptimizationResult(result);
@@ -555,6 +616,32 @@ export default function Optimizer({ token }) {
       setPlanMessage("Optimización y plan guardados.");
     }
   }
+
+  useEffect(() => {
+    function handleEditorShortcuts(event) {
+      const activeElement = document.activeElement;
+      const isWriting =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.tagName === "SELECT";
+
+      if (isWriting) return;
+
+      if (event.ctrlKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        event.shiftKey ? redoPlanChange() : undoPlanChange();
+      }
+
+      if (event.ctrlKey && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoPlanChange();
+      }
+    }
+
+    window.addEventListener("keydown", handleEditorShortcuts);
+    return () =>
+      window.removeEventListener("keydown", handleEditorShortcuts);
+  }, [historyIndex]);
 
   function handleGenerateReport() {
     if (!selectedCapacity || optimizationResult.placed.length === 0) {
@@ -835,6 +922,27 @@ export default function Optimizer({ token }) {
             </div>
 
             <div className="plan-toolbar-actions">
+              <button
+                type="button"
+                className="editor-history-button"
+                onClick={undoPlanChange}
+                disabled={historyIndex <= 0}
+              >
+                ↶ Deshacer
+              </button>
+
+              <button
+                type="button"
+                className="editor-history-button"
+                onClick={redoPlanChange}
+                disabled={
+                  historyIndex < 0 ||
+                  historyIndex >= historyRef.current.length - 1
+                }
+              >
+                ↷ Rehacer
+              </button>
+
               {selectedLoad?.plan_data && (
                 <button
                   type="button"
@@ -890,6 +998,7 @@ export default function Optimizer({ token }) {
     };
 
     setOptimizationResult(nextResult);
+    pushHistory(nextResult);
 
     if (selectedLoad) {
       window.clearTimeout(window.__gerbarPlanSaveTimer);
