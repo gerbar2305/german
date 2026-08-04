@@ -56,6 +56,11 @@ class LoadOptimizationUpdate(BaseModel):
     report_path: str = ""
 
 
+class LoadPlanUpdate(BaseModel):
+    plan_data: str
+    plan_version: int = Field(default=1, ge=1)
+
+
 class LoadRead(BaseModel):
     id: int
     reference: str
@@ -81,6 +86,9 @@ class LoadRead(BaseModel):
     center_of_gravity_z: float | None
     optimized_at: datetime | None
     report_path: str
+    plan_data: str
+    plan_version: int
+    plan_updated_at: datetime | None
     created_at: datetime
     updated_at: datetime
     items: list[LoadItemRead]

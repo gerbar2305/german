@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from app.models.product import Product
 from app.schemas.load import (
     LoadCreate,
     LoadOptimizationUpdate,
+    LoadPlanUpdate,
     LoadRead,
     LoadUpdate,
 )
@@ -120,6 +122,10 @@ def update_load(
     load.status = payload.status
     replace_items(load, payload.items, db)
 
+    # Si se cambian los productos o la unidad, el plan anterior deja de ser válido.
+    load.plan_data = ""
+    load.plan_updated_at = None
+
     db.commit()
     return get_load(load.id, db)
 
@@ -141,6 +147,45 @@ def update_optimization(
     load.optimized_at = payload.optimized_at or datetime.utcnow()
     load.report_path = payload.report_path
 
+    db.commit()
+    return get_load(load.id, db)
+
+
+@router.patch("/{load_id}/plan", response_model=LoadRead)
+def save_plan(
+    load_id: int,
+    payload: LoadPlanUpdate,
+    db: Session = Depends(get_db),
+):
+    load = get_load(load_id, db)
+
+    try:
+        parsed = json.loads(payload.plan_data)
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="El plan de carga no contiene JSON válido",
+        ) from error
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="El plan de carga debe ser un objeto JSON",
+        )
+
+    load.plan_data = payload.plan_data
+    load.plan_version = payload.plan_version
+    load.plan_updated_at = datetime.utcnow()
+
+    db.commit()
+    return get_load(load.id, db)
+
+
+@router.delete("/{load_id}/plan", response_model=LoadRead)
+def delete_plan(load_id: int, db: Session = Depends(get_db)):
+    load = get_load(load_id, db)
+    load.plan_data = ""
+    load.plan_updated_at = None
     db.commit()
     return get_load(load.id, db)
 

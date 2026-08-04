@@ -14,6 +14,8 @@ export default function Optimizer({ token }) {
   const [selectedLoadId, setSelectedLoadId] = useState("");
   const [selectedLoad, setSelectedLoad] = useState(null);
   const [savingOptimization, setSavingOptimization] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planMessage, setPlanMessage] = useState("");
   const [unitType, setUnitType] = useState("container");
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -75,6 +77,24 @@ export default function Optimizer({ token }) {
 
     loadData();
   }, [token]);
+
+  useEffect(() => {
+    const requestedLoadId =
+      localStorage.getItem("gerbar_open_load_id");
+
+    if (
+      !requestedLoadId ||
+      loads.length === 0 ||
+      products.length === 0 ||
+      selectedLoadId
+    ) {
+      return;
+    }
+
+    handleLoadSelection({
+      target: { value: requestedLoadId },
+    });
+  }, [loads, products]);
 
   const availableUnits = useMemo(
     () => (unitType === "vehicle" ? vehicles : containers),
@@ -157,11 +177,164 @@ export default function Optimizer({ token }) {
     ? Math.min(100, (usedWeight / maximumWeight) * 100)
     : 0;
 
+  function serializePlan(result = optimizationResult) {
+    const serializeItem = (item) => ({
+      product_id: item.product?.id ?? item.product_id ?? null,
+      instanceId: item.instanceId ?? null,
+      unit: item.unit ?? null,
+      x: Number(item.x || 0),
+      y: Number(item.y || 0),
+      z: Number(item.z || 0),
+      length: Number(item.length || item.product?.length_m || 0),
+      width: Number(item.width || item.product?.width_m || 0),
+      height: Number(item.height || item.product?.height_m || 0),
+      rotationY: Number(item.rotationY || 0),
+      orientation: item.orientation || "VERTICAL",
+      color: item.color || "",
+      reason: item.reason || "",
+    });
+
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      unitType,
+      capacityId: Number(selectedUnitId),
+      placed: result.placed.map(serializeItem),
+      rejected: result.rejected.map(serializeItem),
+    };
+  }
+
+  function restorePlan(load) {
+    if (!load?.plan_data) return false;
+
+    try {
+      const parsed = JSON.parse(load.plan_data);
+
+      const restoreItem = (item) => {
+        const product = products.find(
+          (productItem) =>
+            String(productItem.id) === String(item.product_id)
+        );
+
+        if (!product) {
+          throw new Error(
+            `No se encontró el producto ${item.product_id} del plan guardado.`
+          );
+        }
+
+        return {
+          ...item,
+          product,
+          rotationY: Number(item.rotationY || 0),
+        };
+      };
+
+      setOptimizationResult({
+        placed: Array.isArray(parsed.placed)
+          ? parsed.placed.map(restoreItem)
+          : [],
+        rejected: Array.isArray(parsed.rejected)
+          ? parsed.rejected.map(restoreItem)
+          : [],
+      });
+
+      setPlanMessage("Plan guardado reabierto correctamente.");
+      return true;
+    } catch (restoreError) {
+      setError(restoreError.message);
+      return false;
+    }
+  }
+
+  async function savePlan(result = optimizationResult, silent = false) {
+    if (!selectedLoad) {
+      if (!silent) {
+        setError("Selecciona una orden para guardar el plan.");
+      }
+      return;
+    }
+
+    if (result.placed.length === 0) {
+      if (!silent) {
+        setError("Primero optimiza o reabre un plan.");
+      }
+      return;
+    }
+
+    setSavingPlan(true);
+    if (!silent) setPlanMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/loads/${selectedLoad.id}/plan`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            plan_data: JSON.stringify(serializePlan(result)),
+            plan_version: 1,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "No se pudo guardar el plan."
+        );
+      }
+
+      setSelectedLoad(data);
+      setLoads((current) =>
+        current.map((load) =>
+          load.id === data.id ? data : load
+        )
+      );
+
+      if (!silent) {
+        setPlanMessage("Plan de carga guardado.");
+      }
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSavingPlan(false);
+    }
+  }
+
+  function handleReopenPlan() {
+    if (!selectedLoad?.plan_data) {
+      setError("Esta orden todavía no tiene un plan guardado.");
+      return;
+    }
+
+    setError("");
+    restorePlan(selectedLoad);
+  }
+
+  async function handleReoptimize() {
+    if (
+      !window.confirm(
+        "¿Reoptimizar la orden? La distribución visible será reemplazada."
+      )
+    ) {
+      return;
+    }
+
+    await handleOptimize();
+  }
+
   function handleLoadSelection(event) {
     const loadId = event.target.value;
     setSelectedLoadId(loadId);
     setOptimizationResult({ placed: [], rejected: [] });
     setError("");
+    setPlanMessage("");
 
     if (!loadId) {
       setSelectedLoad(null);
@@ -209,6 +382,24 @@ export default function Optimizer({ token }) {
 
       setSelectedLoad(load);
       setSelectedItems(loadItems);
+
+      const requestedLoadId =
+        localStorage.getItem("gerbar_open_load_id");
+
+      if (
+        load.plan_data &&
+        (
+          requestedLoadId === String(load.id) ||
+          load.status === "optimized" ||
+          load.status === "warning"
+        )
+      ) {
+        restorePlan(load);
+      }
+
+      if (requestedLoadId === String(load.id)) {
+        localStorage.removeItem("gerbar_open_load_id");
+      }
     } catch (loadError) {
       setSelectedLoad(null);
       setSelectedItems([]);
@@ -360,6 +551,8 @@ export default function Optimizer({ token }) {
 
     if (selectedLoad) {
       await saveOptimizationResult(result);
+      await savePlan(result, true);
+      setPlanMessage("Optimización y plan guardados.");
     }
   }
 
@@ -472,6 +665,9 @@ export default function Optimizer({ token }) {
       </div>
 
       {error && <div className="form-error">{error}</div>}
+      {planMessage && (
+        <div className="plan-success-message">{planMessage}</div>
+      )}
 
       <div className="optimizer-layout">
         <section className="optimizer-card">
@@ -638,24 +834,69 @@ export default function Optimizer({ token }) {
               <p>Arrastra con el mouse para rotar y usa la rueda para acercar.</p>
             </div>
 
-            <button
-              type="button"
-              className="report-button"
-              onClick={handleGenerateReport}
-              disabled={!selectedCapacity || optimizationResult.placed.length === 0}
-            >
-              📄 Generar informe
-            </button>
+            <div className="plan-toolbar-actions">
+              {selectedLoad?.plan_data && (
+                <button
+                  type="button"
+                  className="plan-secondary-button"
+                  onClick={handleReopenPlan}
+                >
+                  👁 Reabrir plan
+                </button>
+              )}
+
+              {selectedLoad && (
+                <button
+                  type="button"
+                  className="plan-secondary-button"
+                  onClick={handleReoptimize}
+                  disabled={savingOptimization}
+                >
+                  🔄 Reoptimizar
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="plan-save-button"
+                onClick={() => savePlan()}
+                disabled={
+                  !selectedLoad ||
+                  optimizationResult.placed.length === 0 ||
+                  savingPlan
+                }
+              >
+                {savingPlan ? "Guardando..." : "💾 Guardar plan"}
+              </button>
+
+              <button
+                type="button"
+                className="report-button"
+                onClick={handleGenerateReport}
+                disabled={!selectedCapacity || optimizationResult.placed.length === 0}
+              >
+                📄 Generar informe
+              </button>
+            </div>
           </div>
 
           <LoadViewer3D
   capacity={selectedCapacity}
   placedItems={optimizationResult.placed}
   onItemsChange={(newPlacedItems) => {
-    setOptimizationResult((currentResult) => ({
-      ...currentResult,
+    const nextResult = {
+      ...optimizationResult,
       placed: newPlacedItems,
-    }));
+    };
+
+    setOptimizationResult(nextResult);
+
+    if (selectedLoad) {
+      window.clearTimeout(window.__gerbarPlanSaveTimer);
+      window.__gerbarPlanSaveTimer = window.setTimeout(() => {
+        savePlan(nextResult, true);
+      }, 900);
+    }
   }}
 />
 

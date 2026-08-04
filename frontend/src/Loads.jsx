@@ -1,329 +1,282 @@
 import React, { useEffect, useMemo, useState } from "react";
+import LoadViewer3D from "./LoadViewer3D.jsx";
+import arrangeProducts from "./optimizer/arrangeProducts.js";
+import { calculateWeightBalance } from "./viewer/WeightBalanceController.js";
+import { generateLoadReport } from "./reports/LoadReportGenerator.js";
 
 const API_URL = "http://127.0.0.1:8000/api/v1";
 
-const EMPTY_FORM = {
-  reference: "",
-  client_name: "",
-  project_name: "",
-  vessel_name: "",
-  voyage_number: "",
-  booking_number: "",
-  loading_port: "",
-  destination_port: "",
-  loading_date: "",
-  sailing_date: "",
-  carrier_name: "",
-  operator_name: "",
-  notes: "",
-  vehicle_id: "",
-  container_id: "",
-};
-
-function toDateTimeLocal(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
-}
-
-function statusText(status) {
-  if (status === "optimized") return "Optimizada";
-  if (status === "warning") return "Con advertencias";
-  if (status === "error") return "Error";
-  return "Pendiente";
-}
-
-export default function Loads({ token, onCountChange }) {
-  const [loads, setLoads] = useState([]);
+export default function Optimizer({ token }) {
   const [vehicles, setVehicles] = useState([]);
   const [containers, setContainers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [editingId, setEditingId] = useState(null);
+  const [loads, setLoads] = useState([]);
+  const [selectedLoadId, setSelectedLoadId] = useState("");
+  const [selectedLoad, setSelectedLoad] = useState(null);
+  const [savingOptimization, setSavingOptimization] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planMessage, setPlanMessage] = useState("");
+  const [unitType, setUnitType] = useState("container");
+  const [selectedUnitId, setSelectedUnitId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [items, setItems] = useState([]);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const authHeaders = {
-    Authorization: `Bearer ${token}`,
-  };
-
-  async function fetchList(endpoint) {
-    const response = await fetch(`${API_URL}/${endpoint}`, {
-      headers: authHeaders,
-    });
-
-    if (!response.ok) {
-      throw new Error(`No se pudo cargar ${endpoint}`);
-    }
-
-    return response.json();
-  }
-
-  async function loadData() {
-    try {
-      const [loadsData, vehiclesData, containersData, productsData] =
-        await Promise.all([
-          fetchList("loads"),
-          fetchList("vehicles"),
-          fetchList("containers"),
-          fetchList("products"),
-        ]);
-
-      setLoads(loadsData);
-      setVehicles(vehiclesData);
-      setContainers(containersData);
-      setProducts(productsData);
-      onCountChange?.(loadsData.length);
-    } catch (error) {
-      setMessage(error.message);
-    }
-  }
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [optimizationResult, setOptimizationResult] = useState({
+    placed: [],
+    rejected: [],
+  });
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!token) return;
 
-  function handleFormChange(event) {
-    const { name, value } = event.target;
+    async function loadData() {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [
+          vehiclesResponse,
+          containersResponse,
+          productsResponse,
+          loadsResponse,
+        ] = await Promise.all([
+          fetch(`${API_URL}/vehicles`, { headers }),
+          fetch(`${API_URL}/containers`, { headers }),
+          fetch(`${API_URL}/products`, { headers }),
+          fetch(`${API_URL}/loads`, { headers }),
+        ]);
 
-    if (name === "vehicle_id" && value) {
-      setForm((current) => ({
-        ...current,
-        vehicle_id: value,
-        container_id: "",
-      }));
-      return;
-    }
+        if (
+          !vehiclesResponse.ok ||
+          !containersResponse.ok ||
+          !productsResponse.ok ||
+          !loadsResponse.ok
+        ) {
+          throw new Error("No se pudieron cargar los datos.");
+        }
 
-    if (name === "container_id" && value) {
-      setForm((current) => ({
-        ...current,
-        container_id: value,
-        vehicle_id: "",
-      }));
-      return;
-    }
+        const [
+          vehiclesData,
+          containersData,
+          productsData,
+          loadsData,
+        ] = await Promise.all([
+          vehiclesResponse.json(),
+          containersResponse.json(),
+          productsResponse.json(),
+          loadsResponse.json(),
+        ]);
 
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
-  }
-
-  function addProduct() {
-    const product = products.find(
-      (item) => item.id === Number(selectedProductId)
-    );
-    const numericQuantity = Number(quantity);
-
-    if (!product) {
-      setMessage("Selecciona un producto.");
-      return;
-    }
-
-    if (!Number.isInteger(numericQuantity) || numericQuantity < 1) {
-      setMessage("La cantidad debe ser mayor que cero.");
-      return;
-    }
-
-    setItems((current) => {
-      const existing = current.find(
-        (item) => item.product_id === product.id
-      );
-
-      if (existing) {
-        return current.map((item) =>
-          item.product_id === product.id
-            ? {
-                ...item,
-                quantity: item.quantity + numericQuantity,
-              }
-            : item
-        );
+        setVehicles(vehiclesData);
+        setContainers(containersData);
+        setProducts(productsData);
+        setLoads(loadsData);
+      } catch (requestError) {
+        setError(requestError.message);
       }
+    }
 
-      return [
-        ...current,
-        {
-          product_id: product.id,
-          quantity: numericQuantity,
-          product,
-        },
-      ];
+    loadData();
+  }, [token]);
+
+  useEffect(() => {
+    const requestedLoadId =
+      localStorage.getItem("gerbar_open_load_id");
+
+    if (
+      !requestedLoadId ||
+      loads.length === 0 ||
+      products.length === 0 ||
+      selectedLoadId
+    ) {
+      return;
+    }
+
+    handleLoadSelection({
+      target: { value: requestedLoadId },
     });
+  }, [loads, products]);
 
-    setSelectedProductId("");
-    setQuantity(1);
-    setMessage("");
-  }
-
-  function removeItem(productId) {
-    setItems((current) =>
-      current.filter((item) => item.product_id !== productId)
-    );
-  }
-
-  const totals = useMemo(
-    () =>
-      items.reduce(
-        (result, item) => {
-          const product = item.product;
-          if (!product) return result;
-
-          const unitVolume =
-            Number(product.length_m || 0) *
-            Number(product.width_m || 0) *
-            Number(product.height_m || 0);
-
-          result.weight +=
-            Number(product.weight_kg || 0) * item.quantity;
-          result.volume += unitVolume * item.quantity;
-          result.units += item.quantity;
-          return result;
-        },
-        { weight: 0, volume: 0, units: 0 }
-      ),
-    [items]
+  const availableUnits = useMemo(
+    () => (unitType === "vehicle" ? vehicles : containers),
+    [unitType, vehicles, containers]
   );
 
-  const selectedCapacity = useMemo(() => {
-    if (form.container_id) {
-      return containers.find(
-        (item) => item.id === Number(form.container_id)
-      );
-    }
+  const selectedCapacity = useMemo(
+    () =>
+      availableUnits.find(
+        (unit) => String(unit.id) === String(selectedUnitId)
+      ),
+    [availableUnits, selectedUnitId]
+  );
 
-    if (form.vehicle_id) {
-      return vehicles.find(
-        (item) => item.id === Number(form.vehicle_id)
-      );
-    }
+  const totalSelectedUnits = useMemo(
+    () =>
+      selectedItems.reduce(
+        (total, item) => total + Number(item.quantity),
+        0
+      ),
+    [selectedItems]
+  );
 
-    return null;
-  }, [form.container_id, form.vehicle_id, containers, vehicles]);
-
-  const capacityVolume = selectedCapacity
-    ? Number(selectedCapacity.internal_length_m || 0) *
+  const containerVolume = useMemo(() => {
+    if (!selectedCapacity) return 0;
+    return (
+      Number(selectedCapacity.internal_length_m || 0) *
       Number(selectedCapacity.internal_width_m || 0) *
       Number(selectedCapacity.internal_height_m || 0)
+    );
+  }, [selectedCapacity]);
+
+  const usedVolume = useMemo(
+    () =>
+      optimizationResult.placed.reduce(
+        (total, item) =>
+          total +
+          Number(item.length || 0) *
+            Number(item.width || 0) *
+            Number(item.height || 0),
+        0
+      ),
+    [optimizationResult.placed]
+  );
+
+  const volumePercentage = containerVolume
+    ? Math.min(100, (usedVolume / containerVolume) * 100)
     : 0;
 
-  const volumePercentage =
-    capacityVolume > 0
-      ? (totals.volume / capacityVolume) * 100
-      : 0;
+  const maximumWeight = useMemo(() => {
+    if (!selectedCapacity) return 0;
+    return Number(
+      selectedCapacity.max_payload_kg ||
+        selectedCapacity.max_weight_kg ||
+        selectedCapacity.payload_capacity_kg ||
+        selectedCapacity.capacity_kg ||
+        0
+    );
+  }, [selectedCapacity]);
 
-  const weightPercentage =
-    Number(selectedCapacity?.max_payload_kg || 0) > 0
-      ? (totals.weight / Number(selectedCapacity.max_payload_kg)) * 100
-      : 0;
+  const usedWeight = useMemo(
+    () =>
+      optimizationResult.placed.reduce(
+        (total, item) => total + Number(item.product?.weight_kg || 0),
+        0
+      ),
+    [optimizationResult.placed]
+  );
 
-  function resetForm() {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setSelectedProductId("");
-    setQuantity(1);
-    setItems([]);
-  }
+  const weightBalance = useMemo(
+    () =>
+      calculateWeightBalance({
+        capacity: selectedCapacity,
+        placedItems: optimizationResult.placed,
+      }),
+    [selectedCapacity, optimizationResult.placed]
+  );
 
-  function startEditing(load) {
-    setEditingId(load.id);
-    setMessage("");
+  const weightPercentage = maximumWeight
+    ? Math.min(100, (usedWeight / maximumWeight) * 100)
+    : 0;
 
-    setForm({
-      reference: load.reference || "",
-      client_name: load.client_name || "",
-      project_name: load.project_name || "",
-      vessel_name: load.vessel_name || "",
-      voyage_number: load.voyage_number || "",
-      booking_number: load.booking_number || "",
-      loading_port: load.loading_port || "",
-      destination_port: load.destination_port || "",
-      loading_date: toDateTimeLocal(load.loading_date),
-      sailing_date: toDateTimeLocal(load.sailing_date),
-      carrier_name: load.carrier_name || "",
-      operator_name: load.operator_name || "",
-      notes: load.notes || "",
-      vehicle_id: load.vehicle_id ? String(load.vehicle_id) : "",
-      container_id: load.container_id ? String(load.container_id) : "",
+  function serializePlan(result = optimizationResult) {
+    const serializeItem = (item) => ({
+      product_id: item.product?.id ?? item.product_id ?? null,
+      instanceId: item.instanceId ?? null,
+      unit: item.unit ?? null,
+      x: Number(item.x || 0),
+      y: Number(item.y || 0),
+      z: Number(item.z || 0),
+      length: Number(item.length || item.product?.length_m || 0),
+      width: Number(item.width || item.product?.width_m || 0),
+      height: Number(item.height || item.product?.height_m || 0),
+      rotationY: Number(item.rotationY || 0),
+      orientation: item.orientation || "VERTICAL",
+      color: item.color || "",
+      reason: item.reason || "",
     });
 
-    setItems(
-      load.items.map((item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        product: products.find(
-          (product) => product.id === item.product_id
-        ),
-      }))
-    );
-
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      unitType,
+      capacityId: Number(selectedUnitId),
+      placed: result.placed.map(serializeItem),
+      rejected: result.rejected.map(serializeItem),
+    };
   }
 
-  async function saveLoad(event) {
-    event.preventDefault();
+  function restorePlan(load) {
+    if (!load?.plan_data) return false;
 
-    if (!form.reference.trim()) {
-      setMessage("Ingresa una referencia.");
+    try {
+      const parsed = JSON.parse(load.plan_data);
+
+      const restoreItem = (item) => {
+        const product = products.find(
+          (productItem) =>
+            String(productItem.id) === String(item.product_id)
+        );
+
+        if (!product) {
+          throw new Error(
+            `No se encontró el producto ${item.product_id} del plan guardado.`
+          );
+        }
+
+        return {
+          ...item,
+          product,
+          rotationY: Number(item.rotationY || 0),
+        };
+      };
+
+      setOptimizationResult({
+        placed: Array.isArray(parsed.placed)
+          ? parsed.placed.map(restoreItem)
+          : [],
+        rejected: Array.isArray(parsed.rejected)
+          ? parsed.rejected.map(restoreItem)
+          : [],
+      });
+
+      setPlanMessage("Plan guardado reabierto correctamente.");
+      return true;
+    } catch (restoreError) {
+      setError(restoreError.message);
+      return false;
+    }
+  }
+
+  async function savePlan(result = optimizationResult, silent = false) {
+    if (!selectedLoad) {
+      if (!silent) {
+        setError("Selecciona una orden para guardar el plan.");
+      }
       return;
     }
 
-    if (!form.client_name.trim()) {
-      setMessage("Ingresa el cliente.");
+    if (result.placed.length === 0) {
+      if (!silent) {
+        setError("Primero optimiza o reabre un plan.");
+      }
       return;
     }
 
-    if (!form.vehicle_id && !form.container_id) {
-      setMessage("Selecciona un vehículo o un contenedor.");
-      return;
-    }
-
-    if (items.length === 0) {
-      setMessage("Agrega al menos un producto.");
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
-
-    const payload = {
-      ...form,
-      reference: form.reference.trim(),
-      client_name: form.client_name.trim(),
-      project_name: form.project_name.trim(),
-      loading_date: form.loading_date || null,
-      sailing_date: form.sailing_date || null,
-      vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null,
-      container_id: form.container_id ? Number(form.container_id) : null,
-      items: items.map((item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-      })),
-    };
-
-    if (editingId) {
-      payload.status = "pending";
-    }
+    setSavingPlan(true);
+    if (!silent) setPlanMessage("");
 
     try {
       const response = await fetch(
-        editingId
-          ? `${API_URL}/loads/${editingId}`
-          : `${API_URL}/loads`,
+        `${API_URL}/loads/${selectedLoad.id}/plan`,
         {
-          method: editingId ? "PUT" : "POST",
+          method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            ...authHeaders,
+            Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            plan_data: JSON.stringify(serializePlan(result)),
+            plan_version: 1,
+          }),
         }
       );
 
@@ -333,435 +286,710 @@ export default function Loads({ token, onCountChange }) {
         throw new Error(
           typeof data.detail === "string"
             ? data.detail
-            : "No fue posible guardar la orden."
+            : "No se pudo guardar el plan."
         );
       }
 
-      resetForm();
-      setMessage(
-        editingId
-          ? "Orden logística actualizada."
-          : "Orden logística creada."
+      setSelectedLoad(data);
+      setLoads((current) =>
+        current.map((load) =>
+          load.id === data.id ? data : load
+        )
       );
-      await loadData();
-    } catch (error) {
-      setMessage(error.message);
+
+      if (!silent) {
+        setPlanMessage("Plan de carga guardado.");
+      }
+    } catch (saveError) {
+      setError(saveError.message);
     } finally {
-      setLoading(false);
+      setSavingPlan(false);
     }
   }
 
-  async function deleteLoad(loadId) {
-    if (!window.confirm("¿Eliminar esta orden de carga?")) return;
-
-    const response = await fetch(`${API_URL}/loads/${loadId}`, {
-      method: "DELETE",
-      headers: authHeaders,
-    });
-
-    if (!response.ok) {
-      setMessage("No fue posible eliminar la orden.");
+  function handleReopenPlan() {
+    if (!selectedLoad?.plan_data) {
+      setError("Esta orden todavía no tiene un plan guardado.");
       return;
     }
 
-    if (editingId === loadId) resetForm();
-    await loadData();
-    setMessage("Orden eliminada.");
+    setError("");
+    restorePlan(selectedLoad);
   }
 
-  function getUnitName(load) {
-    if (load.container_id) {
-      return (
-        containers.find((item) => item.id === load.container_id)?.code ||
-        "Contenedor"
+  async function handleReoptimize() {
+    if (
+      !window.confirm(
+        "¿Reoptimizar la orden? La distribución visible será reemplazada."
+      )
+    ) {
+      return;
+    }
+
+    await handleOptimize();
+  }
+
+  function handleLoadSelection(event) {
+    const loadId = event.target.value;
+    setSelectedLoadId(loadId);
+    setOptimizationResult({ placed: [], rejected: [] });
+    setError("");
+    setPlanMessage("");
+
+    if (!loadId) {
+      setSelectedLoad(null);
+      setSelectedItems([]);
+      return;
+    }
+
+    const load = loads.find(
+      (item) => String(item.id) === String(loadId)
+    );
+
+    if (!load) {
+      setError("No se encontró la orden seleccionada.");
+      return;
+    }
+
+    try {
+      const loadItems = load.items.map((item) => {
+        const product = products.find(
+          (productItem) =>
+            String(productItem.id) === String(item.product_id)
+        );
+
+        if (!product) {
+          throw new Error(
+            `No se encontró el producto ${item.product_id}.`
+          );
+        }
+
+        return {
+          product,
+          quantity: Number(item.quantity),
+        };
+      });
+
+      if (load.container_id) {
+        setUnitType("container");
+        setSelectedUnitId(String(load.container_id));
+      } else if (load.vehicle_id) {
+        setUnitType("vehicle");
+        setSelectedUnitId(String(load.vehicle_id));
+      } else {
+        throw new Error("La orden no tiene unidad asignada.");
+      }
+
+      setSelectedLoad(load);
+      setSelectedItems(loadItems);
+
+      const requestedLoadId =
+        localStorage.getItem("gerbar_open_load_id");
+
+      if (
+        load.plan_data &&
+        (
+          requestedLoadId === String(load.id) ||
+          load.status === "optimized" ||
+          load.status === "warning"
+        )
+      ) {
+        restorePlan(load);
+      }
+
+      if (requestedLoadId === String(load.id)) {
+        localStorage.removeItem("gerbar_open_load_id");
+      }
+    } catch (loadError) {
+      setSelectedLoad(null);
+      setSelectedItems([]);
+      setError(loadError.message);
+    }
+  }
+
+  async function saveOptimizationResult(result) {
+    if (!selectedLoad) return;
+
+    setSavingOptimization(true);
+
+    try {
+      const balance = calculateWeightBalance({
+        capacity: selectedCapacity,
+        placedItems: result.placed,
+      });
+
+      const totalWeight = result.placed.reduce(
+        (total, item) =>
+          total + Number(item.product?.weight_kg || 0),
+        0
+      );
+
+      const totalVolume = result.placed.reduce(
+        (total, item) =>
+          total +
+          Number(item.length || 0) *
+            Number(item.width || 0) *
+            Number(item.height || 0),
+        0
+      );
+
+      const response = await fetch(
+        `${API_URL}/loads/${selectedLoad.id}/optimization`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            status:
+              result.rejected.length > 0
+                ? "warning"
+                : "optimized",
+            total_weight_kg: totalWeight,
+            total_volume_m3: totalVolume,
+            center_of_gravity_x: balance.center.x,
+            center_of_gravity_y: balance.center.y,
+            center_of_gravity_z: balance.center.z,
+            report_path: "",
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "No se pudo guardar la optimización."
+        );
+      }
+
+      setSelectedLoad(data);
+      setLoads((current) =>
+        current.map((load) =>
+          load.id === data.id ? data : load
+        )
+      );
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSavingOptimization(false);
+    }
+  }
+
+  function handleUnitTypeChange(event) {
+    setUnitType(event.target.value);
+    setSelectedUnitId("");
+    setOptimizationResult({ placed: [], rejected: [] });
+  }
+
+  function handleAddProduct() {
+    setError("");
+    const product = products.find(
+      (item) => String(item.id) === String(selectedProductId)
+    );
+    const numericQuantity = Number(quantity);
+
+    if (!product) {
+      setError("Selecciona un producto.");
+      return;
+    }
+
+    if (!Number.isInteger(numericQuantity) || numericQuantity <= 0) {
+      setError("La cantidad debe ser mayor que cero.");
+      return;
+    }
+
+    setSelectedItems((currentItems) => {
+      const existingItem = currentItems.find(
+        (item) => item.product.id === product.id
+      );
+
+      if (existingItem) {
+        return currentItems.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + numericQuantity }
+            : item
+        );
+      }
+
+      return [...currentItems, { product, quantity: numericQuantity }];
+    });
+
+    setSelectedProductId("");
+    setQuantity(1);
+  }
+
+  function handleRemoveProduct(productId) {
+    setSelectedItems((currentItems) =>
+      currentItems.filter((item) => item.product.id !== productId)
+    );
+    setOptimizationResult({ placed: [], rejected: [] });
+  }
+
+  async function handleOptimize() {
+    setError("");
+
+    if (!selectedCapacity) {
+      setError("Selecciona un vehículo o contenedor.");
+      return;
+    }
+
+    if (selectedItems.length === 0) {
+      setError("Agrega al menos un producto.");
+      return;
+    }
+
+    const result = arrangeProducts(
+      selectedCapacity,
+      selectedItems
+    );
+
+    setOptimizationResult(result);
+
+    if (selectedLoad) {
+      await saveOptimizationResult(result);
+      await savePlan(result, true);
+      setPlanMessage("Optimización y plan guardados.");
+    }
+  }
+
+  function handleGenerateReport() {
+    if (!selectedCapacity || optimizationResult.placed.length === 0) {
+      setError("Primero selecciona una unidad y optimiza una carga.");
+      return;
+    }
+
+    const client =
+      selectedLoad?.client_name ||
+      window.prompt("Nombre del cliente:", "INMOVE") ||
+      "INMOVE";
+
+    const project =
+      selectedLoad?.project_name ||
+      selectedLoad?.reference ||
+      window.prompt(
+        "Nombre del proyecto o referencia:",
+        selectedCapacity.name ||
+          selectedCapacity.code ||
+          selectedCapacity.plate ||
+          "Plan de carga"
+      ) || "Plan de carga";
+
+    const declaredTare = Number(
+      selectedCapacity.tare_weight_kg ??
+        selectedCapacity.empty_weight_kg ??
+        selectedCapacity.own_weight_kg ??
+        selectedCapacity.vehicle_weight_kg ??
+        selectedCapacity.container_weight_kg ??
+        0
+    );
+
+    let tareWeight = Math.max(
+      0,
+      Number.isFinite(declaredTare)
+        ? declaredTare
+        : 0
+    );
+
+    if (tareWeight <= 0) {
+      const tareInput = window.prompt(
+        "Este contenedor no tiene tara registrada. Ingresá la tara en kg:",
+        "0"
+      );
+
+      tareWeight = Math.max(
+        0,
+        Number(tareInput || 0) || 0
       );
     }
 
-    return (
-      vehicles.find((item) => item.id === load.vehicle_id)?.name ||
-      "Vehículo"
-    );
+    const grossWeight = usedWeight + tareWeight;
+
+    let viewerImage = "";
+    try {
+      const canvas = document.querySelector(".load-viewer-3d canvas");
+      if (canvas) {
+        viewerImage = canvas.toDataURL("image/png", 1);
+      }
+    } catch (captureError) {
+      console.warn("No se pudo capturar la vista 3D:", captureError);
+    }
+
+    generateLoadReport({
+      client,
+      project,
+      unitType,
+      capacity: selectedCapacity,
+      placedItems: optimizationResult.placed,
+      rejectedItems: optimizationResult.rejected,
+      viewerImage,
+      stats: {
+        usedWeight,
+        tareWeight,
+        grossWeight,
+        maximumWeight,
+        weightPercentage,
+        usedVolume,
+        containerVolume,
+        volumePercentage,
+      },
+      weightBalance,
+      logistics: selectedLoad
+        ? {
+            reference: selectedLoad.reference,
+            bookingNumber: selectedLoad.booking_number,
+            vesselName: selectedLoad.vessel_name,
+            voyageNumber: selectedLoad.voyage_number,
+            loadingPort: selectedLoad.loading_port,
+            destinationPort: selectedLoad.destination_port,
+            loadingDate: selectedLoad.loading_date,
+            sailingDate: selectedLoad.sailing_date,
+            carrierName: selectedLoad.carrier_name,
+            operatorName: selectedLoad.operator_name,
+            notes: selectedLoad.notes,
+          }
+        : {},
+    });
   }
 
   return (
-    <div className="module-page">
-      <section className="load-layout">
-        <form className="form-card load-form" onSubmit={saveLoad}>
-          <h2>
-            {editingId
-              ? "Editar orden logística"
-              : "Nueva orden logística"}
-          </h2>
+    <main className="optimizer-page">
+      <div className="page-heading">
+        <div>
+          <h1>Optimizador de carga</h1>
+          <p>Configura la unidad y los productos para generar una distribución automática.</p>
+        </div>
+      </div>
 
-          <div className="load-form-grid">
-            <label>
-              Referencia
-              <input
-                name="reference"
-                value={form.reference}
-                onChange={handleFormChange}
-                required
-              />
-            </label>
+      {error && <div className="form-error">{error}</div>}
+      {planMessage && (
+        <div className="plan-success-message">{planMessage}</div>
+      )}
 
-            <label>
-              Cliente
-              <input
-                name="client_name"
-                value={form.client_name}
-                onChange={handleFormChange}
-                required
-              />
-            </label>
-
-            <label>
-              Proyecto / operación
-              <input
-                name="project_name"
-                value={form.project_name}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Booking
-              <input
-                name="booking_number"
-                value={form.booking_number}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Buque
-              <input
-                name="vessel_name"
-                value={form.vessel_name}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Viaje
-              <input
-                name="voyage_number"
-                value={form.voyage_number}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Puerto de carga
-              <input
-                name="loading_port"
-                value={form.loading_port}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Puerto de destino
-              <input
-                name="destination_port"
-                value={form.destination_port}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Fecha de carga
-              <input
-                name="loading_date"
-                type="datetime-local"
-                value={form.loading_date}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Fecha de zarpe
-              <input
-                name="sailing_date"
-                type="datetime-local"
-                value={form.sailing_date}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Transportista
-              <input
-                name="carrier_name"
-                value={form.carrier_name}
-                onChange={handleFormChange}
-              />
-            </label>
-
-            <label>
-              Operador responsable
-              <input
-                name="operator_name"
-                value={form.operator_name}
-                onChange={handleFormChange}
-              />
-            </label>
-          </div>
+      <div className="optimizer-layout">
+        <section className="optimizer-card">
+          <h2>Configurar optimización</h2>
 
           <label>
-            Vehículo
+            Orden de carga
             <select
-              name="vehicle_id"
-              value={form.vehicle_id}
-              onChange={handleFormChange}
+              value={selectedLoadId}
+              onChange={handleLoadSelection}
             >
-              <option value="">Sin vehículo</option>
-              {vehicles.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.name} · {vehicle.plate}
+              <option value="">
+                Modo manual / seleccionar orden
+              </option>
+              {loads.map((load) => (
+                <option key={load.id} value={load.id}>
+                  {load.reference}
+                  {load.client_name
+                    ? ` · ${load.client_name}`
+                    : ""}
+                  {load.status
+                    ? ` · ${load.status}`
+                    : ""}
                 </option>
               ))}
             </select>
           </label>
 
-          <label>
-            Contenedor
-            <select
-              name="container_id"
-              value={form.container_id}
-              onChange={handleFormChange}
-            >
-              <option value="">Sin contenedor</option>
-              {containers.map((container) => (
-                <option key={container.id} value={container.id}>
-                  {container.code} · {container.container_type}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Observaciones
-            <textarea
-              name="notes"
-              value={form.notes}
-              onChange={handleFormChange}
-              rows="4"
-            />
-          </label>
-
-          <hr className="form-divider" />
-
-          <h3>Agregar productos</h3>
-
-          <label>
-            Producto
-            <select
-              value={selectedProductId}
-              onChange={(event) =>
-                setSelectedProductId(event.target.value)
-              }
-            >
-              <option value="">Seleccionar producto</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.sku} · {product.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Cantidad
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-            />
-          </label>
-
-          <button
-            type="button"
-            className="secondary-action"
-            onClick={addProduct}
-          >
-            Agregar producto
-          </button>
-
-          <button type="submit" disabled={loading}>
-            {loading
-              ? "Guardando..."
-              : editingId
-                ? "Guardar cambios"
-                : "Guardar orden"}
-          </button>
-
-          {editingId && (
-            <button
-              type="button"
-              className="secondary-form-button"
-              onClick={resetForm}
-            >
-              Cancelar edición
-            </button>
+          {selectedLoad && (
+            <div className="load-order-summary">
+              <strong>{selectedLoad.reference}</strong>
+              <span>
+                Cliente: {selectedLoad.client_name || "—"}
+              </span>
+              <span>
+                Proyecto: {selectedLoad.project_name || "—"}
+              </span>
+              <span>
+                Estado: {selectedLoad.status || "pending"}
+              </span>
+              {selectedLoad.booking_number && (
+                <span>Booking: {selectedLoad.booking_number}</span>
+              )}
+              {(selectedLoad.loading_port || selectedLoad.destination_port) && (
+                <span>
+                  Ruta: {selectedLoad.loading_port || "—"} →{" "}
+                  {selectedLoad.destination_port || "—"}
+                </span>
+              )}
+              {selectedLoad.vessel_name && (
+                <span>
+                  Buque: {selectedLoad.vessel_name}
+                  {selectedLoad.voyage_number
+                    ? ` · Viaje ${selectedLoad.voyage_number}`
+                    : ""}
+                </span>
+              )}
+            </div>
           )}
 
-          {message && <p className="form-message">{message}</p>}
-        </form>
+          <label>
+            Tipo de unidad
+            <select
+              value={unitType}
+              onChange={handleUnitTypeChange}
+              disabled={Boolean(selectedLoad)}
+            >
+              <option value="container">Contenedor</option>
+              <option value="vehicle">Vehículo</option>
+            </select>
+          </label>
 
-        <div className="load-content">
-          <section className="table-card">
-            <div className="table-heading">
-              <h2>Productos de la orden</h2>
-              <span>{totals.units} unidades</span>
+          <label>
+            Unidad disponible
+            <select
+              value={selectedUnitId}
+              onChange={(event) => setSelectedUnitId(event.target.value)}
+              disabled={Boolean(selectedLoad)}
+            >
+              <option value="">Seleccionar unidad</option>
+              {availableUnits.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name || unit.plate || `Unidad ${unit.id}`}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!selectedLoad && (
+          <div className="optimizer-product-form">
+            <label>
+              Producto
+              <select
+                value={selectedProductId}
+                onChange={(event) => setSelectedProductId(event.target.value)}
+              >
+                <option value="">Seleccionar producto</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Cantidad
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+              />
+            </label>
+
+            <button type="button" className="primary-button" onClick={handleAddProduct}>
+              Agregar producto
+            </button>
+          </div>
+          )}
+
+          <div className="selected-products">
+            <div className="section-title-row">
+              <h3>Productos seleccionados</h3>
+              <span>{totalSelectedUnits} unidades</span>
             </div>
 
-            {items.length === 0 ? (
-              <div className="empty-state compact-empty">
-                <span>📦</span>
-                <h3>La orden está vacía</h3>
-              </div>
+            {selectedItems.length === 0 ? (
+              <p className="empty-message">Todavía no agregaste productos.</p>
             ) : (
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Producto</th>
-                      <th>Cantidad</th>
-                      <th>Peso total</th>
-                      <th>Volumen total</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item) => {
-                      const product = item.product;
-                      const productVolume =
-                        Number(product?.length_m || 0) *
-                        Number(product?.width_m || 0) *
-                        Number(product?.height_m || 0);
-
-                      return (
-                        <tr key={item.product_id}>
-                          <td>
-                            {product?.sku} · {product?.name}
-                          </td>
-                          <td>{item.quantity}</td>
-                          <td>
-                            {(
-                              Number(product?.weight_kg || 0) *
-                              item.quantity
-                            ).toLocaleString("es-UY")} kg
-                          </td>
-                          <td>
-                            {(productVolume * item.quantity).toFixed(3)} m³
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className="delete-button"
-                              onClick={() => removeItem(item.product_id)}
-                            >
-                              Quitar
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              selectedItems.map((item) => (
+                <div key={item.product.id} className="selected-product-row">
+                  <div>
+                    <strong>{item.product.name}</strong>
+                    <span>{item.quantity} unidades</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={() => handleRemoveProduct(item.product.id)}
+                    disabled={Boolean(selectedLoad)}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))
             )}
-          </section>
+          </div>
 
-          <section className="load-summary">
-            <article>
-              <span>Unidades</span>
-              <strong>{totals.units}</strong>
-            </article>
-            <article>
-              <span>Peso total</span>
-              <strong>{totals.weight.toLocaleString("es-UY")} kg</strong>
-            </article>
-            <article>
-              <span>Volumen total</span>
-              <strong>{totals.volume.toFixed(3)} m³</strong>
-            </article>
-            <article>
-              <span>Ocupación estimada</span>
-              <strong>{volumePercentage.toFixed(1)}%</strong>
-            </article>
-            <article>
-              <span>Capacidad de peso</span>
-              <strong>{weightPercentage.toFixed(1)}%</strong>
-            </article>
-          </section>
+          <button type="button" className="optimize-button" onClick={handleOptimize}>
+            {savingOptimization
+              ? "Guardando resultado..."
+              : selectedLoad
+                ? "Optimizar orden"
+                : "Optimizar carga"}
+          </button>
+        </section>
 
-          <section className="table-card">
-            <div className="table-heading">
-              <h2>Órdenes logísticas</h2>
-              <span>{loads.length} órdenes</span>
+        <section className="optimizer-viewer-card">
+          <div className="section-title-row">
+            <div>
+              <h2>Vista 3D de la carga</h2>
+              <p>Arrastra con el mouse para rotar y usa la rueda para acercar.</p>
             </div>
 
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Referencia</th>
-                    <th>Cliente</th>
-                    <th>Booking</th>
-                    <th>Ruta</th>
-                    <th>Estado</th>
-                    <th>Unidad</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loads.map((load) => (
-                    <tr key={load.id}>
-                      <td><strong>{load.reference}</strong></td>
-                      <td>{load.client_name || "—"}</td>
-                      <td>{load.booking_number || "—"}</td>
-                      <td>
-                        {(load.loading_port || "—")}
-                        {" → "}
-                        {(load.destination_port || "—")}
-                      </td>
-                      <td>
-                        <span
-                          className={`load-status load-status-${load.status || "pending"}`}
-                        >
-                          {statusText(load.status)}
-                        </span>
-                      </td>
-                      <td>{getUnitName(load)}</td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            type="button"
-                            className="edit-button"
-                            onClick={() => startEditing(load)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="delete-button"
-                            onClick={() => deleteLoad(load.id)}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="plan-toolbar-actions">
+              {selectedLoad?.plan_data && (
+                <button
+                  type="button"
+                  className="plan-secondary-button"
+                  onClick={handleReopenPlan}
+                >
+                  👁 Reabrir plan
+                </button>
+              )}
+
+              {selectedLoad && (
+                <button
+                  type="button"
+                  className="plan-secondary-button"
+                  onClick={handleReoptimize}
+                  disabled={savingOptimization}
+                >
+                  🔄 Reoptimizar
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="plan-save-button"
+                onClick={() => savePlan()}
+                disabled={
+                  !selectedLoad ||
+                  optimizationResult.placed.length === 0 ||
+                  savingPlan
+                }
+              >
+                {savingPlan ? "Guardando..." : "💾 Guardar plan"}
+              </button>
+
+              <button
+                type="button"
+                className="report-button"
+                onClick={handleGenerateReport}
+                disabled={!selectedCapacity || optimizationResult.placed.length === 0}
+              >
+                📄 Generar informe
+              </button>
             </div>
-          </section>
+          </div>
+
+          <LoadViewer3D
+  capacity={selectedCapacity}
+  placedItems={optimizationResult.placed}
+  onItemsChange={(newPlacedItems) => {
+    const nextResult = {
+      ...optimizationResult,
+      placed: newPlacedItems,
+    };
+
+    setOptimizationResult(nextResult);
+
+    if (selectedLoad) {
+      window.clearTimeout(window.__gerbarPlanSaveTimer);
+      window.__gerbarPlanSaveTimer = window.setTimeout(() => {
+        savePlan(nextResult, true);
+      }, 900);
+    }
+  }}
+/>
+
+{optimizationResult.placed.length > 0 && (
+  <div className="product-legend">
+    <h3>Referencias de productos</h3>
+
+    <div className="product-legend-list">
+      {Array.from(
+        new Map(
+          optimizationResult.placed.map((item) => [
+            item.product.id,
+            item,
+          ])
+        ).values()
+      ).map((item) => (
+        <div
+          key={item.product.id}
+          className="product-legend-item"
+        >
+          <span
+            className="product-legend-color"
+            style={{
+              backgroundColor: item.color,
+            }}
+          />
+
+          <span>{item.product.name}</span>
         </div>
-      </section>
+      ))}
     </div>
+  </div>
+)}
+          <div className="optimizer-stats">
+            <div>
+              <span>Productos colocados</span>
+              <strong>{optimizationResult.placed.length}</strong>
+            </div>
+            <div>
+              <span>Productos rechazados</span>
+              <strong>{optimizationResult.rejected.length}</strong>
+            </div>
+            <div className="usage-stat">
+              <div className="usage-stat-header">
+                <span>Volumen utilizado</span>
+                <strong>{volumePercentage.toFixed(1)}%</strong>
+              </div>
+              <div className="usage-progress">
+                <div
+                  className="usage-progress-fill"
+                  style={{ width: `${volumePercentage}%` }}
+                />
+              </div>
+              <small>
+                {usedVolume.toFixed(2)} m³ de {containerVolume.toFixed(2)} m³
+              </small>
+            </div>
+            <div className="usage-stat">
+              <div className="usage-stat-header">
+                <span>Peso utilizado</span>
+                <strong>
+                  {maximumWeight ? `${weightPercentage.toFixed(1)}%` : "Sin límite"}
+                </strong>
+              </div>
+              <div className="usage-progress">
+                <div
+                  className="usage-progress-fill"
+                  style={{ width: `${maximumWeight ? weightPercentage : 0}%` }}
+                />
+              </div>
+              <small>
+                {usedWeight.toFixed(0)} kg
+                {maximumWeight ? ` de ${maximumWeight.toFixed(0)} kg` : ""}
+              </small>
+            </div>
+          </div>
+
+          {optimizationResult.rejected.length > 0 && (
+            <div className="rejected-products">
+              <h3>Productos sin espacio</h3>
+              {optimizationResult.rejected.map((item, index) => (
+                <div
+                  key={`${item.product.id}-${item.unit}-${index}`}
+                  className="rejected-product-row"
+                >
+                  <span>{item.product.name} — unidad {item.unit}</span>
+                  <small>{item.reason}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }

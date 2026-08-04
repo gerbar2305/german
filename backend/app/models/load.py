@@ -48,6 +48,11 @@ class Load(Base):
     optimized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     report_path: Mapped[str] = mapped_column(String(500), default="", server_default="")
 
+    # Plan 3D persistente en JSON.
+    plan_data: Mapped[str] = mapped_column(Text, default="", server_default="")
+    plan_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    plan_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

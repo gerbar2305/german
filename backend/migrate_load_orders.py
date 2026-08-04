@@ -1,8 +1,8 @@
-"""Migración segura de datos logísticos de órdenes.
+"""Agrega persistencia del plan 3D a SQLite.
 
-Ejecutar una sola vez desde la carpeta backend:
+Ejecutar una sola vez desde backend:
 
-    python migrate_load_logistics.py
+    python migrate_load_plans.py
 """
 
 from sqlalchemy import inspect, text
@@ -11,15 +11,9 @@ from app.db.database import engine
 
 
 COLUMNS = {
-    "vessel_name": "VARCHAR(120) NOT NULL DEFAULT ''",
-    "voyage_number": "VARCHAR(80) NOT NULL DEFAULT ''",
-    "booking_number": "VARCHAR(100) NOT NULL DEFAULT ''",
-    "loading_port": "VARCHAR(120) NOT NULL DEFAULT ''",
-    "destination_port": "VARCHAR(120) NOT NULL DEFAULT ''",
-    "loading_date": "DATETIME",
-    "sailing_date": "DATETIME",
-    "carrier_name": "VARCHAR(120) NOT NULL DEFAULT ''",
-    "operator_name": "VARCHAR(120) NOT NULL DEFAULT ''",
+    "plan_data": "TEXT NOT NULL DEFAULT ''",
+    "plan_version": "INTEGER NOT NULL DEFAULT 1",
+    "plan_updated_at": "DATETIME",
 }
 
 
@@ -43,7 +37,7 @@ def main():
             )
             print(f"✓ {name}")
 
-    print("✓ Migración logística finalizada sin borrar cargas")
+    print("✓ Migración de planes finalizada sin borrar cargas")
 
 
 if __name__ == "__main__":
