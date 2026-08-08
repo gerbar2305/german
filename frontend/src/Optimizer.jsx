@@ -5,7 +5,7 @@ import { runIntelligentOptimization } from "./optimizer/intelligentOptimizer.js"
 import { calculateWeightBalance } from "./viewer/WeightBalanceController.js";
 import { generateLoadReport } from "./reports/LoadReportGenerator.js";
 
-const API_URL = "http://127.0.0.1:8000/api/v1";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 
 export default function Optimizer({ token }) {
   const [vehicles, setVehicles] = useState([]);

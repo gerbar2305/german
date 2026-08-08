@@ -9,7 +9,7 @@ import GerBarLogo from "./branding/GerBarLogo.jsx";
 import "./styles.css";
 import "./demo/DemoExperience.css";
 
-const API_URL = "http://127.0.0.1:8000/api/v1";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 
 export default function App() {
   const [email, setEmail] = useState("admin@gerbar.local");
