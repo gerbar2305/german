@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LoadViewer3D from "./LoadViewer3D.jsx";
 import arrangeProducts from "./optimizer/arrangeProducts.js";
+import { runIntelligentOptimization } from "./optimizer/intelligentOptimizer.js";
 import { calculateWeightBalance } from "./viewer/WeightBalanceController.js";
 import { generateLoadReport } from "./reports/LoadReportGenerator.js";
 
@@ -26,6 +27,8 @@ export default function Optimizer({ token }) {
     rejected: [],
   });
   const [error, setError] = useState("");
+  const [runningIntelligent, setRunningIntelligent] = useState(false);
+  const [intelligentResult, setIntelligentResult] = useState(null);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyRef = useRef([]);
   const applyingHistoryRef = useRef(false);
@@ -543,6 +546,7 @@ export default function Optimizer({ token }) {
     setUnitType(event.target.value);
     setSelectedUnitId("");
     setOptimizationResult({ placed: [], rejected: [] });
+    setIntelligentResult(null);
   }
 
   function handleAddProduct() {
@@ -587,10 +591,12 @@ export default function Optimizer({ token }) {
       currentItems.filter((item) => item.product.id !== productId)
     );
     setOptimizationResult({ placed: [], rejected: [] });
+    setIntelligentResult(null);
   }
 
   async function handleOptimize() {
     setError("");
+    setIntelligentResult(null);
 
     if (!selectedCapacity) {
       setError("Selecciona un vehículo o contenedor.");
@@ -614,6 +620,56 @@ export default function Optimizer({ token }) {
       await saveOptimizationResult(result);
       await savePlan(result, true);
       setPlanMessage("Optimización y plan guardados.");
+    }
+  }
+
+  async function handleIntelligentOptimize() {
+    setError("");
+    setPlanMessage("");
+    setRunningIntelligent(true);
+
+    if (!selectedCapacity) {
+      setError("Selecciona un vehículo o contenedor.");
+      setRunningIntelligent(false);
+      return;
+    }
+
+    if (selectedItems.length === 0) {
+      setError("Agrega al menos un producto.");
+      setRunningIntelligent(false);
+      return;
+    }
+
+    // Permite que React muestre el estado de análisis antes del cálculo.
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+
+    try {
+      const result = runIntelligentOptimization(
+        selectedCapacity,
+        selectedItems
+      );
+
+      const cleanResult = {
+        placed: result.placed,
+        rejected: result.rejected,
+      };
+
+      setOptimizationResult(cleanResult);
+      setIntelligentResult(result.intelligence);
+      resetHistory(cleanResult);
+
+      if (selectedLoad) {
+        await saveOptimizationResult(cleanResult);
+        await savePlan(cleanResult, true);
+        setPlanMessage("Optimización inteligente y plan guardados.");
+      }
+    } catch (optimizationError) {
+      setError(
+        optimizationError?.message ||
+          "No se pudo completar la optimización inteligente."
+      );
+    } finally {
+      setRunningIntelligent(false);
     }
   }
 
@@ -912,6 +968,22 @@ export default function Optimizer({ token }) {
                 ? "Optimizar orden"
                 : "Optimizar carga"}
           </button>
+
+          <button
+            type="button"
+            className="intelligent-optimize-button"
+            onClick={handleIntelligentOptimize}
+            disabled={runningIntelligent || savingOptimization}
+          >
+            {runningIntelligent
+              ? "🧠 Comparando estrategias..."
+              : "🧠 Optimización inteligente"}
+          </button>
+
+          <small className="intelligent-optimize-help">
+            Compara Compacta, Balanceada, Pesados primero y Apilado eficiente,
+            y selecciona automáticamente la mejor solución.
+          </small>
         </section>
 
         <section className="optimizer-viewer-card">
@@ -987,6 +1059,44 @@ export default function Optimizer({ token }) {
               </button>
             </div>
           </div>
+
+          {intelligentResult && (
+            <section className="intelligent-result-card">
+              <div className="intelligent-result-header">
+                <div>
+                  <span>MEJOR ESTRATEGIA</span>
+                  <strong>{intelligentResult.strategyName}</strong>
+                  <small>{intelligentResult.strategyDescription}</small>
+                </div>
+
+                <div className="intelligent-result-score">
+                  <b>{intelligentResult.qualityScore.toFixed(0)}</b>
+                  <small>/100</small>
+                </div>
+              </div>
+
+              <div className="intelligent-result-stats">
+                <div>
+                  <span>Alternativas</span>
+                  <strong>{intelligentResult.alternativesAnalyzed}</strong>
+                </div>
+                <div>
+                  <span>Colocados</span>
+                  <strong>{intelligentResult.metrics.placedCount}</strong>
+                </div>
+                <div>
+                  <span>Rechazados</span>
+                  <strong>{intelligentResult.metrics.rejectedCount}</strong>
+                </div>
+                <div>
+                  <span>Volumen</span>
+                  <strong>
+                    {intelligentResult.metrics.volumePercentage.toFixed(1)}%
+                  </strong>
+                </div>
+              </div>
+            </section>
+          )}
 
           <LoadViewer3D
   capacity={selectedCapacity}

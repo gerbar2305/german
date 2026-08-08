@@ -2377,3 +2377,134 @@ button.control-kpi-card:hover {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* GERBAR v1.1 - CARGAS INTEGRADAS */
+.loads-professional-page{margin-top:26px}.loads-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px;padding:18px 20px;border:1px solid #dbe3ee;border-radius:14px;background:#fff}.loads-toolbar>div:first-child{display:flex;flex-direction:column;gap:4px}.loads-toolbar span{color:#64748b;font-size:12px}.loads-toolbar-filters{display:grid;grid-template-columns:minmax(260px,1fr) 190px;gap:10px}.loads-toolbar input,.loads-toolbar select{min-height:42px;padding:0 12px;border:1px solid #cbd5e1;border-radius:9px}.load-open-optimizer-button,.load-duplicate-button{padding:8px 11px;border:0;border-radius:7px;font-weight:800;white-space:nowrap}.load-open-optimizer-button{background:#1d4ed8;color:#fff}.load-duplicate-button{background:#ede9fe;color:#6d28d9}.load-status-warning{background:#ffedd5;color:#c2410c}.table-actions-wrap{flex-wrap:wrap}@media(max-width:800px){.loads-toolbar{align-items:stretch;flex-direction:column}.loads-toolbar-filters{grid-template-columns:1fr}}
+
+
+/* =========================================================
+   GERBAR v1.3 - OPTIMIZACIÓN INTELIGENTE
+========================================================= */
+
+.intelligent-optimize-button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #5b21b6, #7c3aed, #2563eb);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(91, 33, 182, 0.2);
+}
+
+.intelligent-optimize-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.intelligent-optimize-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.intelligent-optimize-help {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.intelligent-result-card {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #c4b5fd;
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at top right, rgba(167, 139, 250, 0.18), transparent 35%),
+    #faf5ff;
+}
+
+.intelligent-result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.intelligent-result-heading > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.intelligent-result-heading span {
+  color: #7c3aed;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.intelligent-result-heading strong {
+  color: #3b0764;
+  font-size: 16px;
+}
+
+.intelligent-quality-score {
+  display: flex;
+  align-items: baseline;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.intelligent-quality-score b {
+  font-size: 22px;
+}
+
+.intelligent-quality-score small {
+  font-size: 10px;
+}
+
+.intelligent-result-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.intelligent-result-grid > div {
+  padding: 8px;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.intelligent-result-grid span {
+  display: block;
+  color: #6b7280;
+  font-size: 9px;
+}
+
+.intelligent-result-grid strong {
+  display: block;
+  margin-top: 3px;
+  color: #312e81;
+  font-size: 14px;
+}
+
+.intelligent-result-card p {
+  margin: 10px 0 0;
+  color: #5b21b6;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 650px) {
+  .intelligent-result-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

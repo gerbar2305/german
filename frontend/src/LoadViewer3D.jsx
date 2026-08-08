@@ -6,6 +6,7 @@ import React, {
 } from "react";
 
 import * as THREE from "three";
+import "./viewer/LoadViewer3DPro.css";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   getItemDimensions,
@@ -35,6 +36,7 @@ export default function LoadViewer3D({
 }) {
   const containerRef = useRef(null);
   const onItemsChangeRef = useRef(onItemsChange);
+  const cameraActionsRef = useRef(null);
 
   const [selectedItemIndex, setSelectedItemIndex] =
     useState(null);
@@ -404,6 +406,68 @@ export default function LoadViewer3D({
     [capacity, placedItems]
   );
 
+  const stability = useMemo(() => {
+    if (!weightBalance.totalWeight) {
+      return {
+        score: 0,
+        level: "empty",
+        label: "Sin carga",
+        description: "Agregá productos con peso para analizar la estabilidad.",
+      };
+    }
+
+    const longitudinalDeviation = Math.abs(
+      50 - Number(weightBalance.centerPercent?.x ?? 50)
+    );
+
+    const lateralDeviation = Math.abs(
+      50 - Number(weightBalance.centerPercent?.y ?? 50)
+    );
+
+    const heightPercentage = Number(
+      weightBalance.centerPercent?.z ?? 0
+    );
+
+    const payloadPercentage =
+      weightBalance.maxPayload > 0
+        ? (weightBalance.totalWeight / weightBalance.maxPayload) * 100
+        : 0;
+
+    const penalty =
+      longitudinalDeviation * 1.1 +
+      lateralDeviation * 1.8 +
+      Math.max(0, heightPercentage - 40) * 0.7 +
+      Math.max(0, payloadPercentage - 90) * 1.4 +
+      weightBalance.warnings.length * 7;
+
+    const score = Math.max(0, Math.min(100, 100 - penalty));
+
+    if (score >= 85) {
+      return {
+        score,
+        level: "excellent",
+        label: "Excelente",
+        description: "La carga está bien centrada y presenta una distribución estable.",
+      };
+    }
+
+    if (score >= 65) {
+      return {
+        score,
+        level: "acceptable",
+        label: "Aceptable",
+        description: "La distribución es utilizable, aunque conviene revisar los desbalances.",
+      };
+    }
+
+    return {
+      score,
+      level: "risk",
+      label: "Riesgosa",
+      description: "Conviene redistribuir la carga antes de confirmar el plan.",
+    };
+  }, [weightBalance]);
+
 useEffect(() => {
   function handleKeyDown(event) {
     if (
@@ -502,7 +566,22 @@ useEffect(() => {
 
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.enabled = !editMode;
+    controls.enabled = true;
+    controls.enablePan = true;
+    controls.enableZoom = true;
+    controls.enableRotate = !editMode;
+    controls.screenSpacePanning = true;
+    controls.zoomSpeed = 0.9;
+    controls.panSpeed = 0.8;
+    controls.rotateSpeed = 0.65;
+
+    // En modo edición el botón izquierdo queda reservado para las cajas.
+    // El botón derecho continúa desplazando la cámara y la rueda mantiene el zoom.
+    controls.mouseButtons.LEFT = editMode
+      ? null
+      : THREE.MOUSE.ROTATE;
+    controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
 
     const containerLength = Number(
       capacity.internal_length_m || 0
@@ -655,6 +734,15 @@ useEffect(() => {
     );
 
     scene.add(grid);
+
+    // Ejes XYZ para orientar al operador dentro del contenedor.
+    const axesSize = Math.max(
+      Math.min(largestDimension * 0.18, 1.5),
+      0.35
+    );
+    const axesHelper = new THREE.AxesHelper(axesSize);
+    axesHelper.position.set(0.03, 0.03, 0.03);
+    scene.add(axesHelper);
 
     // Indicador del centro de gravedad proyectado sobre el piso.
     if (weightBalance.totalWeight > 0) {
@@ -856,6 +944,140 @@ useEffect(() => {
       scene.add(outline);
     });
 
+    function getBounds(loadOnly = false) {
+      const bounds = new THREE.Box3();
+      const objects =
+        loadOnly && productMeshes.length > 0
+          ? productMeshes
+          : [floor, containerLines, ...productMeshes];
+
+      objects.forEach((object) => {
+        object.updateMatrixWorld(true);
+        bounds.expandByObject(object);
+      });
+
+      if (bounds.isEmpty()) {
+        bounds.set(
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(
+            Math.max(containerLength, 1),
+            Math.max(containerHeight, 1),
+            Math.max(containerWidth, 1)
+          )
+        );
+      }
+
+      return bounds;
+    }
+
+    function fitCamera({
+      view = "isometric",
+      loadOnly = false,
+      margin = 1.28,
+    } = {}) {
+      const bounds = getBounds(loadOnly);
+      const center = new THREE.Vector3();
+      const size = new THREE.Vector3();
+
+      bounds.getCenter(center);
+      bounds.getSize(size);
+
+      const radius = Math.max(
+        size.length() / 2,
+        largestDimension * 0.12,
+        0.5
+      );
+
+      const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+      const horizontalFov =
+        2 *
+        Math.atan(
+          Math.tan(verticalFov / 2) *
+            Math.max(camera.aspect, 0.1)
+        );
+
+      const limitingFov = Math.min(verticalFov, horizontalFov);
+      const distance =
+        (radius / Math.max(Math.sin(limitingFov / 2), 0.1)) *
+        margin;
+
+      const directions = {
+        isometric: new THREE.Vector3(1.15, 0.82, 1.35),
+        top: new THREE.Vector3(0.001, 1, 0.001),
+        front: new THREE.Vector3(-1, 0.18, 0),
+        side: new THREE.Vector3(0, 0.18, 1),
+      };
+
+      const direction =
+        directions[view]?.clone() ||
+        directions.isometric.clone();
+
+      direction.normalize();
+
+      camera.up.set(0, 1, 0);
+
+      if (view === "top") {
+        camera.up.set(0, 0, -1);
+      }
+
+      camera.position.copy(
+        center.clone().add(direction.multiplyScalar(distance))
+      );
+
+      controls.target.copy(center);
+      controls.minDistance = Math.max(radius * 0.18, 0.15);
+      controls.maxDistance = Math.max(radius * 12, largestDimension * 6);
+
+      camera.near = Math.max(distance / 500, 0.01);
+      camera.far = Math.max(distance * 30, largestDimension * 100);
+      camera.updateProjectionMatrix();
+
+      controls.update();
+    }
+
+    cameraActionsRef.current = {
+      fitAll: () =>
+        fitCamera({
+          view: "isometric",
+          loadOnly: false,
+        }),
+      fitLoad: () =>
+        fitCamera({
+          view: "isometric",
+          loadOnly: true,
+          margin: 1.38,
+        }),
+      isometric: () =>
+        fitCamera({
+          view: "isometric",
+          loadOnly: false,
+        }),
+      top: () =>
+        fitCamera({
+          view: "top",
+          loadOnly: false,
+          margin: 1.22,
+        }),
+      front: () =>
+        fitCamera({
+          view: "front",
+          loadOnly: false,
+          margin: 1.25,
+        }),
+      side: () =>
+        fitCamera({
+          view: "side",
+          loadOnly: false,
+          margin: 1.25,
+        }),
+    };
+
+    // Encuadre inicial automático para que toda la unidad quede visible.
+    fitCamera({
+      view: "isometric",
+      loadOnly: false,
+    });
+
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
@@ -974,15 +1196,6 @@ useEffect(() => {
 
       if (isItemLocked(item)) {
         renderer.domElement.style.cursor = "not-allowed";
-        return;
-      }
-
-      // Por ahora solo se mueven productos
-      // apoyados directamente en el piso.
-      if (Number(item.z || 0) > 0.0001) {
-        renderer.domElement.style.cursor =
-          "not-allowed";
-
         return;
       }
 
@@ -1127,7 +1340,7 @@ useEffect(() => {
         );
       }
 
-      controls.enabled = !editMode;
+      controls.enabled = true;
       renderer.domElement.style.cursor =
         editMode ? "pointer" : "grab";
 
@@ -1224,6 +1437,9 @@ useEffect(() => {
           newWidth,
           newHeight
         );
+
+        // Recalcula la proyección para evitar recortes al cambiar el tamaño.
+        camera.updateProjectionMatrix();
       });
 
     resizeObserver.observe(element);
@@ -1252,6 +1468,7 @@ useEffect(() => {
         finishDragging
       );
 
+      cameraActionsRef.current = null;
       controls.dispose();
 
       scene.traverse((object) => {
@@ -1314,9 +1531,60 @@ useEffect(() => {
 
           <span>
             {editMode
-              ? "Mové los productos con el mouse · Snap magnético activo"
-              : "Rotá la cámara y usá la rueda para acercar"}
+              ? "Arrastrá cajas con botón izquierdo · Mové la cámara con botón derecho · Rueda para zoom"
+              : "Botón izquierdo rota · Botón derecho desplaza · Rueda acerca"}
           </span>
+        </div>
+
+        <div className="viewer-camera-actions">
+          <button
+            type="button"
+            onClick={() => cameraActionsRef.current?.fitAll()}
+            title="Encuadrar el contenedor y toda la carga"
+          >
+            ⛶ Ajustar todo
+          </button>
+
+          <button
+            type="button"
+            onClick={() => cameraActionsRef.current?.fitLoad()}
+            title="Centrar solamente los productos"
+            disabled={placedItems.length === 0}
+          >
+            🎯 Centrar carga
+          </button>
+
+          <button
+            type="button"
+            onClick={() => cameraActionsRef.current?.isometric()}
+            title="Vista isométrica"
+          >
+            ◩ Isométrica
+          </button>
+
+          <button
+            type="button"
+            onClick={() => cameraActionsRef.current?.top()}
+            title="Vista superior"
+          >
+            ⬆ Superior
+          </button>
+
+          <button
+            type="button"
+            onClick={() => cameraActionsRef.current?.front()}
+            title="Vista frontal"
+          >
+            ▣ Frontal
+          </button>
+
+          <button
+            type="button"
+            onClick={() => cameraActionsRef.current?.side()}
+            title="Vista lateral"
+          >
+            ▤ Lateral
+          </button>
         </div>
 
         <button
@@ -1335,72 +1603,116 @@ useEffect(() => {
         </button>
       </div>
 
-      <div
-        style={{
-          position: "absolute",
-          top: 76,
-          left: 16,
-          zIndex: 19,
-          width: 255,
-          padding: "12px 14px",
-          borderRadius: 10,
-          background: "rgba(255, 255, 255, 0.94)",
-          color: "#0f172a",
-          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.18)",
-          fontSize: 13,
-        }}
-      >
-        <strong style={{ display: "block", marginBottom: 8 }}>
-          ⚖️ Balance de la carga
-        </strong>
+      <aside className={`intelligent-balance-panel ${stability.level}`}>
+        <div className="intelligent-balance-heading">
+          <div>
+            <span>ANÁLISIS EN TIEMPO REAL</span>
+            <strong>⚖️ Balance y estabilidad</strong>
+          </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span>Peso total</span>
-          <strong>{weightBalance.totalWeight.toFixed(0)} kg</strong>
+          <div className={`stability-score ${stability.level}`}>
+            <b>{stability.score.toFixed(0)}</b>
+            <small>/100</small>
+          </div>
         </div>
 
-        <div style={{ marginTop: 8, opacity: 0.8 }}>
-          Centro de gravedad: X {weightBalance.center.x.toFixed(2)} m · Y {weightBalance.center.y.toFixed(2)} m
+        <div className={`stability-status ${stability.level}`}>
+          <span className="stability-dot" />
+          <div>
+            <strong>{stability.label}</strong>
+            <small>{stability.description}</small>
+          </div>
         </div>
 
-        <div style={{ marginTop: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="balance-kpi-grid">
+          <div>
+            <span>Peso total</span>
+            <strong>{weightBalance.totalWeight.toFixed(0)} kg</strong>
+          </div>
+          <div>
+            <span>Centro X</span>
+            <strong>{weightBalance.center.x.toFixed(2)} m</strong>
+          </div>
+          <div>
+            <span>Centro Y</span>
+            <strong>{weightBalance.center.y.toFixed(2)} m</strong>
+          </div>
+          <div>
+            <span>Centro Z</span>
+            <strong>{weightBalance.center.z.toFixed(2)} m</strong>
+          </div>
+        </div>
+
+        <div className="balance-distribution-block">
+          <div className="balance-row-label">
             <span>Frente {weightBalance.distribution.front.toFixed(1)}%</span>
             <span>Fondo {weightBalance.distribution.back.toFixed(1)}%</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-            <span>Izquierda {weightBalance.distribution.left.toFixed(1)}%</span>
-            <span>Derecha {weightBalance.distribution.right.toFixed(1)}%</span>
+          <div className="balance-split-bar">
+            <div
+              className="front"
+              style={{ width: `${weightBalance.distribution.front}%` }}
+            />
+            <div
+              className="back"
+              style={{ width: `${weightBalance.distribution.back}%` }}
+            />
           </div>
         </div>
 
+        <div className="balance-distribution-block">
+          <div className="balance-row-label">
+            <span>Izquierda {weightBalance.distribution.left.toFixed(1)}%</span>
+            <span>Derecha {weightBalance.distribution.right.toFixed(1)}%</span>
+          </div>
+          <div className="balance-split-bar lateral">
+            <div
+              className="left"
+              style={{ width: `${weightBalance.distribution.left}%` }}
+            />
+            <div
+              className="right"
+              style={{ width: `${weightBalance.distribution.right}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="cg-position-map">
+          <span className="cg-map-label front-label">Frente</span>
+          <span className="cg-map-label back-label">Fondo</span>
+          <span className="cg-map-label left-label">Izq.</span>
+          <span className="cg-map-label right-label">Der.</span>
+          <div
+            className={`cg-map-point ${stability.level}`}
+            style={{
+              left: `${Math.min(98, Math.max(2, weightBalance.centerPercent?.x ?? 50))}%`,
+              top: `${Math.min(96, Math.max(4, weightBalance.centerPercent?.y ?? 50))}%`,
+            }}
+            title="Centro de gravedad"
+          />
+        </div>
+
         {weightBalance.axleLoads && (
-          <div style={{ marginTop: 9, paddingTop: 8, borderTop: "1px solid #cbd5e1" }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <div className="axle-loads">
+            <div>
               <span>Eje delantero</span>
               <strong>{weightBalance.axleLoads.front.toFixed(0)} kg</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+            <div>
               <span>Eje trasero</span>
               <strong>{weightBalance.axleLoads.rear.toFixed(0)} kg</strong>
             </div>
           </div>
         )}
 
-        {weightBalance.warnings.length > 0 ? (
-          <div style={{ marginTop: 10, color: "#b45309", fontWeight: 600 }}>
-            ⚠️ {weightBalance.warnings[0]}
-          </div>
-        ) : weightBalance.totalWeight > 0 ? (
-          <div style={{ marginTop: 10, color: "#15803d", fontWeight: 600 }}>
-            ✓ Distribución equilibrada
-          </div>
-        ) : (
-          <div style={{ marginTop: 10, opacity: 0.65 }}>
-            Agregá productos con peso para calcular el balance.
+        {weightBalance.warnings.length > 0 && (
+          <div className="balance-warnings">
+            {weightBalance.warnings.slice(0, 3).map((warning) => (
+              <p key={warning}>⚠️ {warning}</p>
+            ))}
           </div>
         )}
-      </div>
+      </aside>
 
       {dragMeasurements && (
         <div

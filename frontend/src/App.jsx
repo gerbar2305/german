@@ -4,8 +4,10 @@ import Containers from "./Containers.jsx";
 import Products from "./Products.jsx";
 import Loads from "./Loads.jsx";
 import Optimizer from "./Optimizer.jsx";
-import DashboardHome from "./DashboardHome.jsx";
+import DemoDashboard from "./DemoDashboard.jsx";
+import GerBarLogo from "./branding/GerBarLogo.jsx";
 import "./styles.css";
+import "./demo/DemoExperience.css";
 
 const API_URL = "http://127.0.0.1:8000/api/v1";
 
@@ -35,21 +37,18 @@ export default function App() {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        const detail =
+        throw new Error(
           typeof data.detail === "string"
             ? data.detail
-            : "Los datos ingresados no son válidos";
-
-        throw new Error(detail);
+            : "Los datos ingresados no son válidos"
+        );
       }
 
       localStorage.setItem("gerbar_token", data.access_token);
@@ -82,9 +81,7 @@ export default function App() {
       modules.map(async ([key, endpoint]) => {
         try {
           const response = await fetch(`${API_URL}/${endpoint}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
           });
 
           if (response.ok) {
@@ -112,50 +109,62 @@ export default function App() {
 
   if (!token) {
     return (
-      <main className="login-page">
-        <section className="login-card">
-          <div className="login-brand">
-            <span>🚛</span>
-            <div>
-              <h1>GerBar</h1>
-              <p>Load Planner</p>
+      <main className="demo-login-page">
+        <div className="demo-login-backdrop" />
+
+        <section className="demo-login-shell">
+          <div className="demo-login-story">
+            <span className="demo-badge">DEMO EDITION 1.0</span>
+            <GerBarLogo />
+
+            <h1>Intelligent Cargo Optimization System</h1>
+            <p>
+              Optimización por IA, balance de peso, centro de gravedad y
+              simulación 3D para operaciones logísticas.
+            </p>
+
+            <div className="demo-login-features">
+              <span>✓ Optimización multicriterio</span>
+              <span>✓ Editor 3D interactivo</span>
+              <span>✓ Planes e informes</span>
             </div>
           </div>
 
-          <div className="login-heading">
-            <h2>Iniciar sesión</h2>
-            <p>Ingresa tus datos para acceder al sistema.</p>
+          <div className="demo-login-card">
+            <div>
+              <span>ACCESO DE DEMOSTRACIÓN</span>
+              <h2>Ingresar a GerBar</h2>
+              <p>Demo ejecutiva preparada para INMOVE.</p>
+            </div>
+
+            <form onSubmit={handleLogin}>
+              <label htmlFor="email">Correo electrónico</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+
+              <label htmlFor="password">Contraseña</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+
+              <button type="submit" disabled={loading}>
+                {loading ? "Ingresando..." : "Ingresar a la demo"}
+              </button>
+
+              {message && <p className="error-message">{message}</p>}
+            </form>
+
+            <small>GerBar Load Planner · INMOVE · Demo interna</small>
           </div>
-
-          <form onSubmit={handleLogin}>
-            <label htmlFor="email">Correo electrónico</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-
-            <label htmlFor="password">Contraseña</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-
-            <button type="submit" disabled={loading}>
-              {loading ? "Ingresando..." : "Ingresar"}
-            </button>
-
-            {message && <p className="error-message">{message}</p>}
-          </form>
-
-          <small className="login-footer">
-            GerBar Load Planner · Inmove
-          </small>
         </section>
       </main>
     );
@@ -167,29 +176,27 @@ export default function App() {
     containers: "Gestión de contenedores",
     products: "Gestión de productos",
     loads: "Órdenes de carga",
-    optimizer: "Optimizador de carga",
-    reports: "Reportes",
+    optimizer: "Optimizador inteligente",
   };
 
   return (
-    <main className="dashboard">
-      <aside className="sidebar">
-        <div className="logo">
-          <span className="logo-icon">🚛</span>
-          <div>
-            <strong>GerBar</strong>
-            <small>Load Planner</small>
-          </div>
+    <main className="dashboard demo-app-shell">
+      <aside className="sidebar demo-sidebar">
+        <GerBarLogo compact />
+
+        <div className="demo-edition-label">
+          <span>DEMO EDITION</span>
+          <strong>1.0</strong>
         </div>
 
         <nav>
           {[
-            ["dashboard", "🏠 Dashboard"],
+            ["dashboard", "⌂ Centro de control"],
             ["vehicles", "🚛 Vehículos"],
             ["containers", "📦 Contenedores"],
             ["products", "📋 Productos"],
             ["loads", "🧾 Cargas"],
-            ["optimizer", "⚙️ Optimizador"],
+            ["optimizer", "🧠 Optimizador IA"],
           ].map(([page, label]) => (
             <button
               key={page}
@@ -199,39 +206,43 @@ export default function App() {
               {label}
             </button>
           ))}
-
-          <button disabled>📄 Reportes</button>
         </nav>
+
+        <div className="demo-sidebar-footer">
+          <span className="demo-live-dot" />
+          Sistema operativo
+        </div>
       </aside>
 
-      <section className="dashboard-content">
-        <header className="topbar">
+      <section className="dashboard-content demo-content">
+        <header className="topbar demo-topbar">
           <div>
+            <span className="demo-topbar-eyebrow">GERBAR LOAD PLANNER</span>
             <h1>{pageTitles[activePage]}</h1>
-            <p>GerBar Load Planner</p>
+            <p>Demo ejecutiva para presentación interna</p>
           </div>
 
-          <button className="logout-button" onClick={logout}>
-            Cerrar sesión
-          </button>
+          <div className="demo-user-area">
+            <div>
+              <strong>Germán Barrios</strong>
+              <span>Administrador de demo</span>
+            </div>
+
+            <button className="logout-button" onClick={logout}>
+              Cerrar sesión
+            </button>
+          </div>
         </header>
 
         {activePage === "dashboard" && (
-          <DashboardHome
-            token={token}
-            counts={counts}
-            onNavigate={setActivePage}
-          />
+          <DemoDashboard counts={counts} onNavigate={setActivePage} />
         )}
 
         {activePage === "vehicles" && (
           <Vehicles
             token={token}
             onCountChange={(total) =>
-              setCounts((current) => ({
-                ...current,
-                vehicles: total,
-              }))
+              setCounts((current) => ({ ...current, vehicles: total }))
             }
           />
         )}
@@ -240,10 +251,7 @@ export default function App() {
           <Containers
             token={token}
             onCountChange={(total) =>
-              setCounts((current) => ({
-                ...current,
-                containers: total,
-              }))
+              setCounts((current) => ({ ...current, containers: total }))
             }
           />
         )}
@@ -252,10 +260,7 @@ export default function App() {
           <Products
             token={token}
             onCountChange={(total) =>
-              setCounts((current) => ({
-                ...current,
-                products: total,
-              }))
+              setCounts((current) => ({ ...current, products: total }))
             }
           />
         )}
@@ -264,17 +269,12 @@ export default function App() {
           <Loads
             token={token}
             onCountChange={(total) =>
-              setCounts((current) => ({
-                ...current,
-                loads: total,
-              }))
+              setCounts((current) => ({ ...current, loads: total }))
             }
           />
         )}
 
-        {activePage === "optimizer" && (
-          <Optimizer token={token} />
-        )}
+        {activePage === "optimizer" && <Optimizer token={token} />}
       </section>
     </main>
   );
