@@ -7,9 +7,13 @@ class VehicleCreate(BaseModel):
     name: str
     plate: str
     vehicle_type: str = "truck"
+
     internal_length_m: float
     internal_width_m: float
     internal_height_m: float
+
+    tare_weight_kg: float = 0
+    max_gross_weight_kg: float = 0
     max_payload_kg: float
 
 

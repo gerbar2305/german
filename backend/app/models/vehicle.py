@@ -13,8 +13,17 @@ class Vehicle(Base):
     name: Mapped[str] = mapped_column(String(120))
     plate: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     vehicle_type: Mapped[str] = mapped_column(String(50), default="truck")
+
     internal_length_m: Mapped[float] = mapped_column(Float)
     internal_width_m: Mapped[float] = mapped_column(Float)
     internal_height_m: Mapped[float] = mapped_column(Float)
+
+    # Pesos
+    tare_weight_kg: Mapped[float] = mapped_column(Float, default=0)
+    max_gross_weight_kg: Mapped[float] = mapped_column(Float, default=0)
     max_payload_kg: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow
+    )

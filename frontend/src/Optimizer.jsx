@@ -115,6 +115,16 @@ export default function Optimizer({ token }) {
     [availableUnits, selectedUnitId]
   );
 
+  const activePlacedItems = useMemo(
+    () => optimizationResult.placed.filter((item) => !item.standby),
+    [optimizationResult.placed]
+  );
+
+  const standbyItems = useMemo(
+    () => optimizationResult.placed.filter((item) => item.standby),
+    [optimizationResult.placed]
+  );
+
   const totalSelectedUnits = useMemo(
     () =>
       selectedItems.reduce(
@@ -135,7 +145,7 @@ export default function Optimizer({ token }) {
 
   const usedVolume = useMemo(
     () =>
-      optimizationResult.placed.reduce(
+      activePlacedItems.reduce(
         (total, item) =>
           total +
           Number(item.length || 0) *
@@ -143,7 +153,7 @@ export default function Optimizer({ token }) {
             Number(item.height || 0),
         0
       ),
-    [optimizationResult.placed]
+    [activePlacedItems]
   );
 
   const volumePercentage = containerVolume
@@ -163,20 +173,20 @@ export default function Optimizer({ token }) {
 
   const usedWeight = useMemo(
     () =>
-      optimizationResult.placed.reduce(
+      activePlacedItems.reduce(
         (total, item) => total + Number(item.product?.weight_kg || 0),
         0
       ),
-    [optimizationResult.placed]
+    [activePlacedItems]
   );
 
   const weightBalance = useMemo(
     () =>
       calculateWeightBalance({
         capacity: selectedCapacity,
-        placedItems: optimizationResult.placed,
+        placedItems: activePlacedItems,
       }),
-    [selectedCapacity, optimizationResult.placed]
+    [selectedCapacity, activePlacedItems]
   );
 
   const weightPercentage = maximumWeight
@@ -199,6 +209,8 @@ export default function Optimizer({ token }) {
       color: item.color || "",
       reason: item.reason || "",
       locked: Boolean(item.locked),
+      standby: Boolean(item.standby),
+      standbyOrigin: item.standbyOrigin || null,
     });
 
     return {
@@ -234,6 +246,8 @@ export default function Optimizer({ token }) {
           product,
           rotationY: Number(item.rotationY || 0),
           locked: Boolean(item.locked),
+          standby: Boolean(item.standby),
+          standbyOrigin: item.standbyOrigin || null,
         };
       };
 
@@ -476,18 +490,22 @@ export default function Optimizer({ token }) {
     setSavingOptimization(true);
 
     try {
+      const activeResultItems = result.placed.filter(
+        (item) => !item.standby
+      );
+
       const balance = calculateWeightBalance({
         capacity: selectedCapacity,
-        placedItems: result.placed,
+        placedItems: activeResultItems,
       });
 
-      const totalWeight = result.placed.reduce(
+      const totalWeight = activeResultItems.reduce(
         (total, item) =>
           total + Number(item.product?.weight_kg || 0),
         0
       );
 
-      const totalVolume = result.placed.reduce(
+      const totalVolume = activeResultItems.reduce(
         (total, item) =>
           total +
           Number(item.length || 0) *
@@ -700,8 +718,10 @@ export default function Optimizer({ token }) {
   }, [historyIndex]);
 
   function handleGenerateReport() {
-    if (!selectedCapacity || optimizationResult.placed.length === 0) {
-      setError("Primero selecciona una unidad y optimiza una carga.");
+    if (!selectedCapacity || activePlacedItems.length === 0) {
+      setError(
+        "Primero selecciona una unidad y deja al menos un bulto dentro del contenedor."
+      );
       return;
     }
 
@@ -766,7 +786,7 @@ export default function Optimizer({ token }) {
       project,
       unitType,
       capacity: selectedCapacity,
-      placedItems: optimizationResult.placed,
+      placedItems: activePlacedItems,
       rejectedItems: optimizationResult.rejected,
       viewerImage,
       stats: {
@@ -1053,7 +1073,7 @@ export default function Optimizer({ token }) {
                 type="button"
                 className="report-button"
                 onClick={handleGenerateReport}
-                disabled={!selectedCapacity || optimizationResult.placed.length === 0}
+                disabled={!selectedCapacity || activePlacedItems.length === 0}
               >
                 📄 Generar informe
               </button>
@@ -1143,20 +1163,32 @@ export default function Optimizer({ token }) {
             }}
           />
 
-          <span>{item.product.name}</span>
+          <span>{item.product.name}{item.standby ? " · STAND BY" : ""}</span>
         </div>
       ))}
     </div>
   </div>
 )}
+          {standbyItems.length > 0 && (
+            <div className="standby-warning">
+              ⚠️ Hay {standbyItems.length} bulto
+              {standbyItems.length === 1 ? "" : "s"} en stand by fuera de la unidad.
+              Reingresalos antes de cerrar el plan definitivo.
+            </div>
+          )}
+
           <div className="optimizer-stats">
             <div>
               <span>Productos colocados</span>
-              <strong>{optimizationResult.placed.length}</strong>
+              <strong>{activePlacedItems.length}</strong>
             </div>
             <div>
               <span>Productos rechazados</span>
               <strong>{optimizationResult.rejected.length}</strong>
+            </div>
+            <div>
+              <span>Bultos en stand by</span>
+              <strong>{standbyItems.length}</strong>
             </div>
             <div className="usage-stat">
               <div className="usage-stat-header">

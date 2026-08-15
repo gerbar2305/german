@@ -12,8 +12,17 @@ class Container(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     container_type: Mapped[str] = mapped_column(String(50))
+
     internal_length_m: Mapped[float] = mapped_column(Float)
     internal_width_m: Mapped[float] = mapped_column(Float)
     internal_height_m: Mapped[float] = mapped_column(Float)
+
+    # Pesos
+    tare_weight_kg: Mapped[float] = mapped_column(Float, default=0)
+    max_gross_weight_kg: Mapped[float] = mapped_column(Float, default=0)
     max_payload_kg: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow
+    )

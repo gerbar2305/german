@@ -1,0 +1,77 @@
+/* GerBar Viewer 3D v3.2 - Identificación, Fullscreen y Stand By */
+
+.load-viewer-wrapper:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  padding: 14px;
+  overflow: auto;
+  background: #eef2f6;
+}
+
+.load-viewer-wrapper:fullscreen .load-viewer-3d {
+  min-height: calc(100vh - 170px);
+  height: calc(100vh - 170px);
+}
+
+.viewer-identification-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.viewer-identification-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.viewer-identification-controls select,
+.viewer-fullscreen-button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.viewer-fullscreen-button {
+  cursor: pointer;
+}
+
+.standby-editor-action {
+  border-color: #f59e0b !important;
+  background: #fffbeb !important;
+  color: #92400e !important;
+}
+
+.standby-return-action {
+  border-color: #16a34a !important;
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+}
+
+.load-viewer-wrapper.fullscreen-active {
+  background: #eef2f6;
+}
+
+@media (max-width: 780px) {
+  .viewer-identification-controls {
+    width: 100%;
+  }
+
+  .viewer-identification-controls label {
+    flex: 1 1 170px;
+  }
+
+  .viewer-identification-controls select,
+  .viewer-fullscreen-button {
+    width: 100%;
+  }
+}

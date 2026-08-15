@@ -7,6 +7,7 @@ import React, {
 
 import * as THREE from "three";
 import "./viewer/LoadViewer3DPro.css";
+import "./viewer/LoadViewer3DStandby.css";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   getItemDimensions,
@@ -34,14 +35,19 @@ export default function LoadViewer3D({
   placedItems = [],
   onItemsChange,
 }) {
+  const wrapperRef = useRef(null);
   const containerRef = useRef(null);
   const onItemsChangeRef = useRef(onItemsChange);
   const cameraActionsRef = useRef(null);
+  const cameraStateRef = useRef(null);
+  const standbyCameraFitRequestedRef = useRef(false);
 
   const [selectedItemIndex, setSelectedItemIndex] =
     useState(null);
   const [editMode, setEditMode] = useState(false);
   const [dragMeasurements, setDragMeasurements] = useState(null);
+  const [labelMode, setLabelMode] = useState("code-description");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   function normalizeRotation(value) {
     const number = Number(value || 0);
@@ -56,6 +62,144 @@ export default function LoadViewer3D({
 
   function isItemLocked(item) {
     return Boolean(item?.locked);
+  }
+
+  function isStandby(item) {
+    return Boolean(item?.standby);
+  }
+
+  function getProductCode(item) {
+    return String(
+      item?.product?.code ??
+      item?.product?.sku ??
+      item?.product?.reference ??
+      item?.product?.id ??
+      item?.unit ??
+      "—"
+    );
+  }
+
+  function getProductDescription(item) {
+    return String(
+      item?.product?.description ??
+      item?.product?.name ??
+      "Producto"
+    );
+  }
+
+  function buildItemLabel(item) {
+    const code = getProductCode(item);
+    const description = getProductDescription(item);
+
+    if (labelMode === "code") return code;
+    if (labelMode === "description") return description;
+    if (labelMode === "hidden") return "";
+    return `${code} · ${description}`;
+  }
+
+  async function toggleFullscreen() {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await wrapper.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (fullscreenError) {
+      console.warn("No se pudo cambiar a pantalla completa:", fullscreenError);
+    }
+  }
+
+  function moveSelectedToStandby() {
+    if (
+      selectedItemIndex === null ||
+      !placedItems[selectedItemIndex]
+    ) {
+      return;
+    }
+
+    const selected = placedItems[selectedItemIndex];
+
+    if (selected.locked) {
+      window.alert("Desbloqueá el bulto antes de pasarlo a stand by.");
+      return;
+    }
+
+    standbyCameraFitRequestedRef.current = true;
+
+    emitItems(
+      placedItems.map((item, index) =>
+        index === selectedItemIndex
+          ? {
+              ...item,
+              standby: true,
+              standbyOrigin: {
+                x: Number(item.x || 0),
+                y: Number(item.y || 0),
+                z: Number(item.z || 0),
+              },
+            }
+          : item
+      )
+    );
+  }
+
+  function returnSelectedFromStandby() {
+    if (
+      selectedItemIndex === null ||
+      !placedItems[selectedItemIndex]
+    ) {
+      return;
+    }
+
+    const item = placedItems[selectedItemIndex];
+    if (!item.standby) return;
+
+    const dimensions = getItemDimensions(item);
+    const origin = item.standbyOrigin || { x: 0, y: 0, z: 0 };
+    const candidate = {
+      x: Number(origin.x || 0),
+      y: Number(origin.y || 0),
+      z: Number(origin.z || 0),
+      length: dimensions.length,
+      width: dimensions.width,
+      height: dimensions.height,
+      rotationY: getRotationY(item),
+    };
+
+    const activeItems = placedItems.filter(
+      (other, index) => index !== selectedItemIndex && !other.standby
+    );
+
+    const valid = isValidPlacement({
+      candidate,
+      placedItems: activeItems,
+      movingIndex: null,
+      capacity,
+    });
+
+    if (!valid) {
+      window.alert(
+        "La posición original todavía está ocupada. Mové primero los bultos del interior y luego volvé a intentar."
+      );
+      return;
+    }
+
+    emitItems(
+      placedItems.map((placedItem, index) =>
+        index === selectedItemIndex
+          ? {
+              ...placedItem,
+              standby: false,
+              x: Number(candidate.x.toFixed(4)),
+              y: Number(candidate.y.toFixed(4)),
+              z: Number(candidate.z.toFixed(4)),
+            }
+          : placedItem
+      )
+    );
   }
 
   function toggleSelectedLock() {
@@ -156,6 +300,11 @@ export default function LoadViewer3D({
 
     const item = placedItems[selectedItemIndex];
 
+    if (isStandby(item)) {
+      window.alert("Reingresá el bulto al contenedor antes de rotarlo.");
+      return;
+    }
+
     if (isItemLocked(item)) {
       window.alert("Este pallet está bloqueado.");
       return;
@@ -237,6 +386,11 @@ export default function LoadViewer3D({
     }
 
     const item = placedItems[selectedItemIndex];
+
+    if (isStandby(item)) {
+      window.alert("Reingresá el bulto al contenedor antes de rotarlo.");
+      return;
+    }
 
     if (isItemLocked(item)) {
       window.alert("Este pallet está bloqueado.");
@@ -390,6 +544,17 @@ export default function LoadViewer3D({
     onItemsChangeRef.current = onItemsChange;
   }, [onItemsChange]);
 
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(document.fullscreenElement === wrapperRef.current);
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+
   const selectedItem = useMemo(() => {
     if (
       selectedItemIndex === null ||
@@ -402,7 +567,10 @@ export default function LoadViewer3D({
   }, [placedItems, selectedItemIndex]);
 
   const weightBalance = useMemo(
-    () => calculateWeightBalance({ capacity, placedItems }),
+    () => calculateWeightBalance({
+      capacity,
+      placedItems: placedItems.filter((item) => !item.standby),
+    }),
     [capacity, placedItems]
   );
 
@@ -831,7 +999,10 @@ useEffect(() => {
 
       return !placedItems.some(
         (otherItem, otherIndex) => {
-          if (otherIndex === movingIndex) {
+          if (
+            otherIndex === movingIndex ||
+            otherItem?.standby
+          ) {
             return false;
           }
 
@@ -853,8 +1024,99 @@ useEffect(() => {
       );
     }
 
+    // Zona temporal fuera del contenedor para reorganizar la carga.
+    const standbyZoneWidth = Math.max(containerLength * 0.22, 2.2);
+    const standbyZoneDepth = Math.max(containerWidth, 2.2);
+    const standbyZoneGeometry = new THREE.PlaneGeometry(
+      standbyZoneWidth,
+      standbyZoneDepth
+    );
+    const standbyZoneMaterial = new THREE.MeshBasicMaterial({
+      color: "#e2e8f0",
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+    });
+    const standbyZone = new THREE.Mesh(
+      standbyZoneGeometry,
+      standbyZoneMaterial
+    );
+    standbyZone.rotation.x = -Math.PI / 2;
+    standbyZone.position.set(
+      containerLength + standbyZoneWidth / 2 + Math.max(containerWidth * 0.35, 1.2),
+      0.015,
+      containerWidth / 2
+    );
+    scene.add(standbyZone);
+
+    const standbyZoneEdges = new THREE.EdgesGeometry(standbyZoneGeometry);
+    const standbyZoneOutline = new THREE.LineSegments(
+      standbyZoneEdges,
+      new THREE.LineBasicMaterial({ color: "#64748b" })
+    );
+    standbyZoneOutline.rotation.x = -Math.PI / 2;
+    standbyZoneOutline.position.copy(standbyZone.position);
+    scene.add(standbyZoneOutline);
+
     const productMeshes = [];
     const outlines = [];
+    const standbyGap = Math.max(containerWidth * 0.35, 1.2);
+    const standbyBaseX = containerLength + standbyGap;
+    let standbyCursorZ = 0;
+
+    function createLabelSprite(text, selected = false) {
+      if (!text) return null;
+
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      const fontSize = 28 * pixelRatio;
+      context.font = `700 ${fontSize}px Arial`;
+
+      const paddingX = 18 * pixelRatio;
+      const paddingY = 10 * pixelRatio;
+      const measured = context.measureText(text);
+      canvas.width = Math.ceil(measured.width + paddingX * 2);
+      canvas.height = Math.ceil(fontSize + paddingY * 2);
+
+      context.font = `700 ${fontSize}px Arial`;
+      context.fillStyle = selected
+        ? "rgba(250, 204, 21, 0.96)"
+        : "rgba(15, 23, 42, 0.88)";
+      context.strokeStyle = "rgba(255,255,255,0.9)";
+      context.lineWidth = 2 * pixelRatio;
+      context.beginPath();
+      context.roundRect(
+        1,
+        1,
+        canvas.width - 2,
+        canvas.height - 2,
+        9 * pixelRatio
+      );
+      context.fill();
+      context.stroke();
+
+      context.fillStyle = selected ? "#422006" : "#ffffff";
+      context.textBaseline = "middle";
+      context.fillText(text, paddingX, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+
+      const sprite = new THREE.Sprite(material);
+      const aspect = canvas.width / canvas.height;
+      const labelHeight = Math.max(largestDimension * 0.055, 0.28);
+      sprite.scale.set(labelHeight * aspect, labelHeight, 1);
+      sprite.renderOrder = 1000;
+      sprite.userData.isProductLabel = true;
+      return sprite;
+    }
 
     placedItems.forEach((item, index) => {
       const dimensions = getDimensions(item);
@@ -903,11 +1165,20 @@ useEffect(() => {
         rotationY
       );
 
-      box.position.set(
-        Number(item.x || 0) + footprint.length / 2,
-        Number(item.z || 0) + dimensions.height / 2,
-        Number(item.y || 0) + footprint.width / 2
-      );
+      if (item.standby) {
+        box.position.set(
+          standbyBaseX + footprint.length / 2,
+          dimensions.height / 2,
+          standbyCursorZ + footprint.width / 2
+        );
+        standbyCursorZ += footprint.width + 0.18;
+      } else {
+        box.position.set(
+          Number(item.x || 0) + footprint.length / 2,
+          Number(item.z || 0) + dimensions.height / 2,
+          Number(item.y || 0) + footprint.width / 2
+        );
+      }
 
       box.rotation.y = THREE.MathUtils.degToRad(rotationY);
 
@@ -919,6 +1190,7 @@ useEffect(() => {
         rotationY,
         footprint,
         locked: isLocked,
+        standby: Boolean(item.standby),
       };
 
       productMeshes.push(box);
@@ -942,6 +1214,20 @@ useEffect(() => {
       outlines[index] = outline;
 
       scene.add(outline);
+
+      const label = createLabelSprite(
+        buildItemLabel(item),
+        isSelected
+      );
+
+      if (label) {
+        label.position.set(
+          box.position.x,
+          box.position.y + dimensions.height / 2 + 0.16,
+          box.position.z
+        );
+        scene.add(label);
+      }
     });
 
     function getBounds(loadOnly = false) {
@@ -1072,11 +1358,44 @@ useEffect(() => {
         }),
     };
 
-    // Encuadre inicial automático para que toda la unidad quede visible.
-    fitCamera({
-      view: "isometric",
-      loadOnly: false,
-    });
+    // Mantiene exactamente la cámara que dejó el operador al editar.
+    if (cameraStateRef.current) {
+      const saved = cameraStateRef.current;
+      camera.position.fromArray(saved.position);
+      camera.up.fromArray(saved.up);
+      controls.target.fromArray(saved.target);
+      camera.near = saved.near;
+      camera.far = saved.far;
+      camera.updateProjectionMatrix();
+      controls.update();
+    } else {
+      fitCamera({
+        view: "isometric",
+        loadOnly: false,
+      });
+    }
+
+    function saveCameraState() {
+      cameraStateRef.current = {
+        position: camera.position.toArray(),
+        target: controls.target.toArray(),
+        up: camera.up.toArray(),
+        near: camera.near,
+        far: camera.far,
+      };
+    }
+
+    controls.addEventListener("change", saveCameraState);
+
+    if (standbyCameraFitRequestedRef.current) {
+      standbyCameraFitRequestedRef.current = false;
+      fitCamera({
+        view: "isometric",
+        loadOnly: false,
+        margin: 1.42,
+      });
+      saveCameraState();
+    }
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -1099,6 +1418,7 @@ useEffect(() => {
     let proposedPosition = null;
     let validDrop = false;
     let activePointerId = null;
+    let dragStartedFromStandby = false;
 
     function updatePointer(event) {
       const rectangle =
@@ -1203,27 +1523,38 @@ useEffect(() => {
       draggedMesh = mesh;
       draggedIndex = index;
       draggedOutline = outlines[index];
+      dragStartedFromStandby = isStandby(item);
 
       originalPosition =
         mesh.position.clone();
 
-      proposedPosition = {
-        x: Number(item.x || 0),
-        y: Number(item.y || 0),
-        z: Number(item.z || 0),
-      };
+      proposedPosition = dragStartedFromStandby
+        ? {
+            x: 0,
+            y: 0,
+            z: 0,
+          }
+        : {
+            x: Number(item.x || 0),
+            y: Number(item.y || 0),
+            z: Number(item.z || 0),
+          };
 
-      setDragMeasurements(
-        calculateClearances({
-          candidate: {
-            ...proposedPosition,
-            ...mesh.userData.dimensions,
-          },
-          capacity,
-          placedItems,
-          movingIndex: index,
-        })
-      );
+      if (!dragStartedFromStandby) {
+        setDragMeasurements(
+          calculateClearances({
+            candidate: {
+              ...proposedPosition,
+              ...mesh.userData.dimensions,
+            },
+            capacity,
+            placedItems: placedItems.filter((item) => !item.standby),
+            movingIndex: index,
+          })
+        );
+      } else {
+        setDragMeasurements(null);
+      }
 
       activePointerId = event.pointerId;
 
@@ -1293,8 +1624,10 @@ useEffect(() => {
         intersectionPoint,
         dragOffset,
         dimensions,
-        currentZ: placedItems[draggedIndex].z,
-        placedItems,
+        currentZ: dragStartedFromStandby
+          ? 0
+          : Number(placedItems[draggedIndex].z || 0),
+        placedItems: placedItems.filter((item) => !item.standby),
         movingIndex: draggedIndex,
         capacity,
       });
@@ -1310,7 +1643,7 @@ useEffect(() => {
         calculateClearances({
           candidate: dragPlacement.candidate,
           capacity,
-          placedItems,
+          placedItems: placedItems.filter((item) => !item.standby),
           movingIndex: draggedIndex,
         })
       );
@@ -1345,11 +1678,28 @@ useEffect(() => {
         editMode ? "pointer" : "grab";
 
       if (validDrop && proposedPosition) {
-        const updatedItems = updateDraggedItem({
-          placedItems,
-          movingIndex: draggedIndex,
-          position: proposedPosition,
-        });
+        let updatedItems;
+
+        if (dragStartedFromStandby) {
+          updatedItems = placedItems.map((item, index) =>
+            index === draggedIndex
+              ? {
+                  ...item,
+                  x: Number(proposedPosition.x.toFixed(4)),
+                  y: Number(proposedPosition.y.toFixed(4)),
+                  z: Number(proposedPosition.z.toFixed(4)),
+                  standby: false,
+                  standbyOrigin: null,
+                }
+              : item
+          );
+        } else {
+          updatedItems = updateDraggedItem({
+            placedItems,
+            movingIndex: draggedIndex,
+            position: proposedPosition,
+          });
+        }
 
         if (
           typeof onItemsChangeRef.current ===
@@ -1381,6 +1731,7 @@ useEffect(() => {
       proposedPosition = null;
       validDrop = false;
       activePointerId = null;
+      dragStartedFromStandby = false;
       setDragMeasurements(null);
     }
 
@@ -1468,6 +1819,8 @@ useEffect(() => {
         finishDragging
       );
 
+      saveCameraState();
+      controls.removeEventListener("change", saveCameraState);
       cameraActionsRef.current = null;
       controls.dispose();
 
@@ -1520,6 +1873,7 @@ useEffect(() => {
 
   return (
     <div
+      ref={wrapperRef}
       className={`load-viewer-wrapper ${
         editMode ? "edit-mode-active" : ""
       }`}
@@ -1584,6 +1938,29 @@ useEffect(() => {
             title="Vista lateral"
           >
             ▤ Lateral
+          </button>
+        </div>
+
+        <div className="viewer-identification-controls">
+          <label>
+            Identificar bultos
+            <select
+              value={labelMode}
+              onChange={(event) => setLabelMode(event.target.value)}
+            >
+              <option value="code-description">Código + descripción</option>
+              <option value="code">Solo código</option>
+              <option value="description">Solo descripción</option>
+              <option value="hidden">Ocultar etiquetas</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className="viewer-fullscreen-button"
+            onClick={toggleFullscreen}
+          >
+            {isFullscreen ? "🗗 Salir pantalla completa" : "⛶ Pantalla completa"}
           </button>
         </div>
 
@@ -1718,8 +2095,8 @@ useEffect(() => {
         <div
           style={{
             position: "absolute",
-            top: 76,
-            right: 16,
+bottom: 18,
+left: 18,
             zIndex: 20,
             minWidth: 210,
             padding: "12px 14px",
@@ -1804,6 +2181,23 @@ useEffect(() => {
           </div>
 
           <div className="selected-item-data">
+            <div>
+              <span>Código</span>
+              <strong>{getProductCode(selectedItem)}</strong>
+            </div>
+
+            <div>
+              <span>Descripción</span>
+              <strong>{getProductDescription(selectedItem)}</strong>
+            </div>
+
+            <div>
+              <span>Estado</span>
+              <strong>
+                {selectedItem.standby ? "Stand by exterior" : "Dentro de unidad"}
+              </strong>
+            </div>
+
             <div>
               <span>Peso</span>
 
@@ -1910,8 +2304,10 @@ useEffect(() => {
 
           <p className="selected-item-help">
             {editMode
-              ? "Mantené presionado el botón izquierdo del mouse y arrastrá el producto. Verde indica una posición válida y rojo una posición inválida."
-              : "Activá el Modo edición para mover o rotar este producto."}
+              ? selectedItem.standby
+                ? "Este bulto está en STAND BY. Arrastralo con el botón izquierdo hacia cualquier espacio libre del contenedor. Verde indica que puede reingresar."
+                : "Mantené presionado el botón izquierdo del mouse y arrastrá el producto. Verde indica una posición válida y rojo una posición inválida."
+              : "Activá el Modo edición para mover, sacar a stand by o rotar este producto."}
           </p>
 
           <div className="selected-item-actions">
@@ -1931,6 +2327,26 @@ useEffect(() => {
               >
                 📄 Duplicar
               </button>
+
+              {!selectedItem.standby ? (
+  <button
+    type="button"
+    onClick={moveSelectedToStandby}
+    disabled={!editMode || selectedItem.locked}
+    className="standby-editor-action"
+  >
+    📤 Pasar a stand by
+  </button>
+) : (
+  <button
+    type="button"
+    onClick={returnSelectedFromStandby}
+    disabled={!editMode}
+    className="standby-return-action"
+  >
+    📥 Reingresar al contenedor
+  </button>
+)}
 
               <button
                 type="button"
@@ -1952,6 +2368,7 @@ useEffect(() => {
                   }
                   disabled={
                     !editMode ||
+                    selectedItem.standby ||
                     selectedItem.locked ||
                     selectedItem.product?.rotatable === false
                   }
@@ -1970,7 +2387,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => rotateSelectedBy(-15)}
-                disabled={!editMode || selectedItem.locked || selectedItem.product?.rotatable === false}
+                disabled={!editMode || selectedItem.standby || selectedItem.locked || selectedItem.product?.rotatable === false}
               >
                 ↺ −15°
               </button>
@@ -1978,7 +2395,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => rotateSelectedBy(15)}
-                disabled={!editMode || selectedItem.locked || selectedItem.product?.rotatable === false}
+                disabled={!editMode || selectedItem.standby || selectedItem.locked || selectedItem.product?.rotatable === false}
               >
                 ↻ +15°
               </button>
@@ -1986,7 +2403,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => applySelectedRotation(0)}
-                disabled={!editMode || selectedItem.locked || selectedItem.product?.rotatable === false}
+                disabled={!editMode || selectedItem.standby || selectedItem.locked || selectedItem.product?.rotatable === false}
               >
                 Restablecer
               </button>
@@ -1994,7 +2411,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={laySelectedItemOnLength}
-                disabled={!editMode || selectedItem.locked || selectedItem.product?.tiltable === false}
+                disabled={!editMode || selectedItem.standby || selectedItem.locked || selectedItem.product?.tiltable === false}
               >
                 ▰ Acostar sobre largo
               </button>
@@ -2002,7 +2419,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={laySelectedItemOnWidth}
-                disabled={!editMode || selectedItem.locked || selectedItem.product?.tiltable === false}
+                disabled={!editMode || selectedItem.standby || selectedItem.locked || selectedItem.product?.tiltable === false}
               >
                 ▰ Acostar sobre ancho
               </button>
