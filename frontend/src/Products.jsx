@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 
 const initialForm = {
   sku: "",
@@ -19,6 +20,7 @@ export default function Products({ token, onCountChange }) {
   const [form, setForm] = useState(initialForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   async function loadProducts() {
     try {
@@ -34,7 +36,7 @@ export default function Products({ token, onCountChange }) {
 
       const data = await response.json();
       setProducts(data);
-      onCountChange(data.length);
+      onCountChange?.(data.length);
     } catch (error) {
       setMessage(error.message);
     }
@@ -42,7 +44,7 @@ export default function Products({ token, onCountChange }) {
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [token]);
 
   function handleChange(event) {
     const { name, value, type, checked } = event.target;
@@ -51,6 +53,53 @@ export default function Products({ token, onCountChange }) {
       ...current,
       [name]: type === "checkbox" ? checked : value,
     }));
+  }
+
+  function startEditing(product) {
+    setEditingId(product.id);
+    setForm({
+      sku: product.sku || "",
+      name: product.name || "",
+      length_m: String(product.length_m ?? ""),
+      width_m: String(product.width_m ?? ""),
+      height_m: String(product.height_m ?? ""),
+      weight_kg: String(product.weight_kg ?? ""),
+      stackable: Boolean(product.stackable),
+      rotatable: Boolean(product.rotatable),
+      fragile: Boolean(product.fragile),
+    });
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setForm(initialForm);
+    setMessage("");
+  }
+
+  async function updateProduct(productId, payload) {
+    let response = await fetch(`${API_URL}/products/${productId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 405) {
+      response = await fetch(`${API_URL}/products/${productId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    return response;
   }
 
   async function handleSubmit(event) {
@@ -67,28 +116,37 @@ export default function Products({ token, onCountChange }) {
     };
 
     try {
-      const response = await fetch(`${API_URL}/products`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = editingId
+        ? await updateProduct(editingId, payload)
+        : await fetch(`${API_URL}/products`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         const detail =
           typeof data.detail === "string"
             ? data.detail
-            : "No fue posible registrar el producto";
+            : editingId
+              ? "No fue posible actualizar el producto"
+              : "No fue posible registrar el producto";
 
         throw new Error(detail);
       }
 
       setForm(initialForm);
-      setMessage("Producto registrado correctamente.");
+      setEditingId(null);
+      setMessage(
+        editingId
+          ? "Producto actualizado correctamente."
+          : "Producto registrado correctamente."
+      );
       await loadProducts();
     } catch (error) {
       setMessage(error.message);
@@ -116,6 +174,10 @@ export default function Products({ token, onCountChange }) {
         throw new Error("No fue posible eliminar el producto");
       }
 
+      if (editingId === productId) {
+        cancelEditing();
+      }
+
       await loadProducts();
       setMessage("Producto eliminado correctamente.");
     } catch (error) {
@@ -127,7 +189,7 @@ export default function Products({ token, onCountChange }) {
     <div className="module-page">
       <section className="vehicle-layout">
         <form className="form-card" onSubmit={handleSubmit}>
-          <h2>Nuevo producto</h2>
+          <h2>{editingId ? "Editar producto" : "Nuevo producto"}</h2>
 
           <label htmlFor="sku">Código o SKU</label>
           <input
@@ -238,8 +300,24 @@ export default function Products({ token, onCountChange }) {
           </div>
 
           <button type="submit" disabled={loading}>
-            {loading ? "Guardando..." : "Registrar producto"}
+            {loading
+              ? "Guardando..."
+              : editingId
+                ? "Guardar cambios"
+                : "Registrar producto"}
           </button>
+
+          {editingId && (
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={cancelEditing}
+              disabled={loading}
+              style={{ marginTop: 8 }}
+            >
+              Cancelar edición
+            </button>
+          )}
 
           {message && <p className="form-message">{message}</p>}
         </form>
@@ -290,15 +368,27 @@ export default function Products({ token, onCountChange }) {
                         <td>{product.weight_kg.toLocaleString()} kg</td>
                         <td>
                           {product.stackable ? "Apilable" : "No apilable"}
+                          {product.rotatable ? " · Rotable" : " · No rotable"}
                           {product.fragile ? " · Frágil" : ""}
                         </td>
                         <td>
-                          <button
-                            className="delete-button"
-                            onClick={() => deleteProduct(product.id)}
-                          >
-                            Eliminar
-                          </button>
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className="edit-button"
+                              onClick={() => startEditing(product)}
+                            >
+                              Editar
+                            </button>
+
+                            <button
+                              type="button"
+                              className="delete-button"
+                              onClick={() => deleteProduct(product.id)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

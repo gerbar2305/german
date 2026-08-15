@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 
 const initialForm = {
   name: "",
@@ -9,6 +10,8 @@ const initialForm = {
   internal_length_m: "",
   internal_width_m: "",
   internal_height_m: "",
+  tare_weight_kg: "",
+  max_gross_weight_kg: "",
   max_payload_kg: "",
 };
 
@@ -17,6 +20,17 @@ export default function Vehicles({ token, onCountChange }) {
   const [form, setForm] = useState(initialForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const calculatedPayload = useMemo(() => {
+    const tare = Number(form.tare_weight_kg || 0);
+    const gross = Number(form.max_gross_weight_kg || 0);
+
+    if (tare >= 0 && gross > 0 && gross >= tare) {
+      return gross - tare;
+    }
+
+    return 0;
+  }, [form.tare_weight_kg, form.max_gross_weight_kg]);
 
   async function loadVehicles() {
     try {
@@ -32,7 +46,7 @@ export default function Vehicles({ token, onCountChange }) {
 
       const data = await response.json();
       setVehicles(data);
-      onCountChange(data.length);
+      onCountChange?.(data.length);
     } catch (error) {
       setMessage(error.message);
     }
@@ -40,15 +54,35 @@ export default function Vehicles({ token, onCountChange }) {
 
   useEffect(() => {
     loadVehicles();
-  }, []);
+  }, [token]);
 
   function handleChange(event) {
     const { name, value } = event.target;
 
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
+    setForm((current) => {
+      const next = {
+        ...current,
+        [name]: value,
+      };
+
+      if (name === "tare_weight_kg" || name === "max_gross_weight_kg") {
+        const tare = Number(
+          name === "tare_weight_kg" ? value : next.tare_weight_kg || 0
+        );
+        const gross = Number(
+          name === "max_gross_weight_kg"
+            ? value
+            : next.max_gross_weight_kg || 0
+        );
+
+        next.max_payload_kg =
+          tare >= 0 && gross > 0 && gross >= tare
+            ? String(gross - tare)
+            : "";
+      }
+
+      return next;
+    });
   }
 
   async function handleSubmit(event) {
@@ -56,12 +90,36 @@ export default function Vehicles({ token, onCountChange }) {
     setLoading(true);
     setMessage("");
 
+    const tareWeight = Number(form.tare_weight_kg);
+    const maxGrossWeight = Number(form.max_gross_weight_kg);
+    const maxPayload = Number(form.max_payload_kg);
+
+    if (tareWeight < 0) {
+      setMessage("La tara no puede ser negativa.");
+      setLoading(false);
+      return;
+    }
+
+    if (maxGrossWeight <= 0) {
+      setMessage("Ingresá el peso bruto máximo.");
+      setLoading(false);
+      return;
+    }
+
+    if (maxGrossWeight < tareWeight) {
+      setMessage("El peso bruto máximo no puede ser menor que la tara.");
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       ...form,
       internal_length_m: Number(form.internal_length_m),
       internal_width_m: Number(form.internal_width_m),
       internal_height_m: Number(form.internal_height_m),
-      max_payload_kg: Number(form.max_payload_kg),
+      tare_weight_kg: tareWeight,
+      max_gross_weight_kg: maxGrossWeight,
+      max_payload_kg: maxPayload,
     };
 
     try {
@@ -213,17 +271,51 @@ export default function Vehicles({ token, onCountChange }) {
             </div>
           </div>
 
-          <label htmlFor="max_payload_kg">Carga máxima (kg)</label>
+          <label htmlFor="tare_weight_kg">Tara / peso propio (kg)</label>
+          <input
+            id="tare_weight_kg"
+            name="tare_weight_kg"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.tare_weight_kg}
+            onChange={handleChange}
+            placeholder="Ejemplo: 8500"
+            required
+          />
+
+          <label htmlFor="max_gross_weight_kg">
+            Peso bruto máximo (kg)
+          </label>
+          <input
+            id="max_gross_weight_kg"
+            name="max_gross_weight_kg"
+            type="number"
+            step="0.01"
+            min="0.01"
+            value={form.max_gross_weight_kg}
+            onChange={handleChange}
+            placeholder="Ejemplo: 40000"
+            required
+          />
+
+          <label htmlFor="max_payload_kg">Carga útil máxima (kg)</label>
           <input
             id="max_payload_kg"
             name="max_payload_kg"
             type="number"
             step="0.01"
-            min="0.01"
+            min="0"
             value={form.max_payload_kg}
-            onChange={handleChange}
-            required
+            readOnly
           />
+
+          <small style={{ display: "block", marginTop: -6, marginBottom: 10 }}>
+            Cálculo automático: peso bruto máximo − tara
+            {calculatedPayload > 0
+              ? ` = ${calculatedPayload.toLocaleString()} kg`
+              : ""}
+          </small>
 
           <button type="submit" disabled={loading}>
             {loading ? "Guardando..." : "Registrar vehículo"}
@@ -253,7 +345,9 @@ export default function Vehicles({ token, onCountChange }) {
                     <th>Matrícula</th>
                     <th>Tipo</th>
                     <th>Dimensiones</th>
-                    <th>Carga máxima</th>
+                    <th>Tara</th>
+                    <th>Peso bruto máx.</th>
+                    <th>Carga útil</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -270,10 +364,20 @@ export default function Vehicles({ token, onCountChange }) {
                         {vehicle.internal_height_m} m
                       </td>
                       <td>
-                        {vehicle.max_payload_kg.toLocaleString()} kg
+                        {Number(vehicle.tare_weight_kg || 0).toLocaleString()} kg
+                      </td>
+                      <td>
+                        {Number(
+                          vehicle.max_gross_weight_kg || 0
+                        ).toLocaleString()}{" "}
+                        kg
+                      </td>
+                      <td>
+                        {Number(vehicle.max_payload_kg || 0).toLocaleString()} kg
                       </td>
                       <td>
                         <button
+                          type="button"
                           className="delete-button"
                           onClick={() => deleteVehicle(vehicle.id)}
                         >
