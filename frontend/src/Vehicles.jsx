@@ -20,6 +20,7 @@ export default function Vehicles({ token, onCountChange }) {
   const [form, setForm] = useState(initialForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const calculatedPayload = useMemo(() => {
     const tare = Number(form.tare_weight_kg || 0);
@@ -85,6 +86,53 @@ export default function Vehicles({ token, onCountChange }) {
     });
   }
 
+  function startEditing(vehicle) {
+    setEditingId(vehicle.id);
+    setMessage("");
+    setForm({
+      name: vehicle.name || "",
+      plate: vehicle.plate || "",
+      vehicle_type: vehicle.vehicle_type || "truck",
+      internal_length_m: String(vehicle.internal_length_m ?? ""),
+      internal_width_m: String(vehicle.internal_width_m ?? ""),
+      internal_height_m: String(vehicle.internal_height_m ?? ""),
+      tare_weight_kg: String(vehicle.tare_weight_kg ?? 0),
+      max_gross_weight_kg: String(vehicle.max_gross_weight_kg ?? 0),
+      max_payload_kg: String(vehicle.max_payload_kg ?? 0),
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setForm(initialForm);
+    setMessage("");
+  }
+
+  async function updateVehicle(vehicleId, payload) {
+    let response = await fetch(`${API_URL}/vehicles/${vehicleId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 405) {
+      response = await fetch(`${API_URL}/vehicles/${vehicleId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    return response;
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setLoading(true);
@@ -123,14 +171,16 @@ export default function Vehicles({ token, onCountChange }) {
     };
 
     try {
-      const response = await fetch(`${API_URL}/vehicles`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = editingId
+        ? await updateVehicle(editingId, payload)
+        : await fetch(`${API_URL}/vehicles`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
 
       const data = await response.json();
 
@@ -144,7 +194,12 @@ export default function Vehicles({ token, onCountChange }) {
       }
 
       setForm(initialForm);
-      setMessage("Vehículo registrado correctamente.");
+      setEditingId(null);
+      setMessage(
+        editingId
+          ? "Vehículo actualizado correctamente."
+          : "Vehículo registrado correctamente."
+      );
       await loadVehicles();
     } catch (error) {
       setMessage(error.message);
@@ -192,7 +247,7 @@ export default function Vehicles({ token, onCountChange }) {
 
       <section className="vehicle-layout">
         <form className="form-card" onSubmit={handleSubmit}>
-          <h2>Nuevo vehículo</h2>
+          <h2>{editingId ? "Editar vehículo" : "Nuevo vehículo"}</h2>
 
           <label htmlFor="name">Nombre o identificación</label>
           <input
@@ -318,8 +373,24 @@ export default function Vehicles({ token, onCountChange }) {
           </small>
 
           <button type="submit" disabled={loading}>
-            {loading ? "Guardando..." : "Registrar vehículo"}
+            {loading
+              ? "Guardando..."
+              : editingId
+                ? "Guardar cambios"
+                : "Registrar vehículo"}
           </button>
+
+          {editingId && (
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={cancelEditing}
+              disabled={loading}
+              style={{ marginTop: 8 }}
+            >
+              Cancelar edición
+            </button>
+          )}
 
           {message && <p className="form-message">{message}</p>}
         </form>
@@ -376,13 +447,22 @@ export default function Vehicles({ token, onCountChange }) {
                         {Number(vehicle.max_payload_kg || 0).toLocaleString()} kg
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="delete-button"
-                          onClick={() => deleteVehicle(vehicle.id)}
-                        >
-                          Eliminar
-                        </button>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="edit-button"
+                            onClick={() => startEditing(vehicle)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="delete-button"
+                            onClick={() => deleteVehicle(vehicle.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
