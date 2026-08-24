@@ -100,7 +100,6 @@ def create_load(payload: LoadCreate, db: Session = Depends(get_db)):
     db.commit()
     return get_load(load.id, db)
 
-
 @router.put("/{load_id}", response_model=LoadRead)
 def update_load(
     load_id: int,
@@ -115,18 +114,73 @@ def update_load(
             Load.id != load_id,
         )
     )
+
     if duplicate:
-        raise HTTPException(status_code=409, detail="La referencia ya existe")
+        raise HTTPException(
+            status_code=409,
+            detail="La referencia ya existe",
+        )
 
+    # Detectar si cambió la unidad
+    unit_changed = (
+        load.vehicle_id != payload.vehicle_id
+        or load.container_id != payload.container_id
+    )
+
+    # Detectar si cambiaron productos o cantidades
+    current_items = sorted(
+        [
+            (item.product_id, item.quantity)
+            for item in load.items
+        ]
+    )
+
+    new_items = sorted(
+        [
+            (item.product_id, item.quantity)
+            for item in payload.items
+        ]
+    )
+
+    products_changed = current_items != new_items
+
+    optimization_invalidated = (
+        unit_changed or products_changed
+    )
+
+    # Actualizar datos generales
     apply_payload(load, payload)
-    load.status = payload.status
-    replace_items(load, payload.items, db)
 
-    # Si se cambian los productos o la unidad, el plan anterior deja de ser válido.
-    load.plan_data = ""
-    load.plan_updated_at = None
+    replace_items(
+        load,
+        payload.items,
+        db,
+    )
+
+    # Si cambió unidad/productos, el plan ya no es válido
+    if optimization_invalidated:
+        load.status = "pending"
+
+        load.plan_data = ""
+        load.plan_updated_at = None
+
+        load.total_weight_kg = 0
+        load.total_volume_m3 = 0
+
+        load.center_of_gravity_x = 0
+        load.center_of_gravity_y = 0
+        load.center_of_gravity_z = 0
+
+        load.optimized_at = None
+        load.report_path = ""
+
+    # Si solo cambian datos logísticos,
+    # conservamos estado y plan existentes
+    else:
+        load.status = load.status or "pending"
 
     db.commit()
+
     return get_load(load.id, db)
 
 
@@ -180,15 +234,23 @@ def save_plan(
     db.commit()
     return get_load(load.id, db)
 
-
 @router.delete("/{load_id}/plan", response_model=LoadRead)
-def delete_plan(load_id: int, db: Session = Depends(get_db)):
+def delete_plan(
+    load_id: int,
+    db: Session = Depends(get_db),
+):
     load = get_load(load_id, db)
+
     load.plan_data = ""
     load.plan_updated_at = None
-    db.commit()
-    return get_load(load.id, db)
+    load.status = "pending"
 
+    db.commit()
+
+    return get_load(
+        load.id,
+        db,
+    )
 
 @router.delete("/{load_id}", status_code=204)
 def delete_load(load_id: int, db: Session = Depends(get_db)):

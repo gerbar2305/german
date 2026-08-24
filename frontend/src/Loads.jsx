@@ -87,9 +87,84 @@ export default function Loads({ token, onCountChange, onOpenOptimizer }) {
     }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+useEffect(() => {
+  async function initializeLoads() {
+    try {
+      const [loadsData, vehiclesData, containersData, productsData] =
+        await Promise.all([
+          fetchList("loads"),
+          fetchList("vehicles"),
+          fetchList("containers"),
+          fetchList("products"),
+        ]);
+
+      setLoads(loadsData);
+      setVehicles(vehiclesData);
+      setContainers(containersData);
+      setProducts(productsData);
+      onCountChange?.(loadsData.length);
+
+      const editLoadId = localStorage.getItem("gerbar_edit_load_id");
+
+      if (editLoadId) {
+        const loadToEdit = loadsData.find(
+          (load) => load.id === Number(editLoadId)
+        );
+
+        if (loadToEdit) {
+          setEditingId(loadToEdit.id);
+          setMessage("");
+
+          setForm({
+            reference: loadToEdit.reference || "",
+            client_name: loadToEdit.client_name || "",
+            project_name: loadToEdit.project_name || "",
+            vessel_name: loadToEdit.vessel_name || "",
+            voyage_number: loadToEdit.voyage_number || "",
+            booking_number: loadToEdit.booking_number || "",
+            loading_port: loadToEdit.loading_port || "",
+            destination_port: loadToEdit.destination_port || "",
+            loading_date: toDateTimeLocal(loadToEdit.loading_date),
+            sailing_date: toDateTimeLocal(loadToEdit.sailing_date),
+            carrier_name: loadToEdit.carrier_name || "",
+            operator_name: loadToEdit.operator_name || "",
+            notes: loadToEdit.notes || "",
+            vehicle_id:
+  loadToEdit.vehicle_id && !loadToEdit.container_id
+    ? String(loadToEdit.vehicle_id)
+    : "",
+
+container_id:
+  loadToEdit.container_id
+    ? String(loadToEdit.container_id)
+    : "",
+          });
+
+          setItems(
+            loadToEdit.items.map((item) => ({
+              product_id: item.product_id,
+              quantity: item.quantity,
+              product: productsData.find(
+                (product) => product.id === item.product_id
+              ),
+            }))
+          );
+
+          window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+
+        localStorage.removeItem("gerbar_edit_load_id");
+      }
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  initializeLoads();
+}, []);
 
   function handleFormChange(event) {
     const { name, value } = event.target;
@@ -252,8 +327,15 @@ export default function Loads({ token, onCountChange, onOpenOptimizer }) {
       carrier_name: load.carrier_name || "",
       operator_name: load.operator_name || "",
       notes: load.notes || "",
-      vehicle_id: load.vehicle_id ? String(load.vehicle_id) : "",
-      container_id: load.container_id ? String(load.container_id) : "",
+      vehicle_id:
+  load.vehicle_id && !load.container_id
+    ? String(load.vehicle_id)
+    : "",
+
+container_id:
+  load.container_id
+    ? String(load.container_id)
+    : "",
     });
 
     setItems(
@@ -332,20 +414,34 @@ export default function Loads({ token, onCountChange, onOpenOptimizer }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "No fue posible guardar la orden."
-        );
-      }
+  console.error("ERROR AL GUARDAR ORDEN:", data);
 
-      resetForm();
-      setMessage(
-        editingId
-          ? "Orden logística actualizada."
-          : "Orden logística creada."
-      );
-      await loadData();
+  const detail =
+    typeof data.detail === "string"
+      ? data.detail
+      : Array.isArray(data.detail)
+        ? data.detail
+            .map((error) => {
+              const field = error.loc?.join(" → ") || "campo";
+              return `${field}: ${error.msg}`;
+            })
+            .join(" | ")
+        : JSON.stringify(data.detail || data);
+
+  throw new Error(detail || "No fue posible guardar la orden.");
+}
+
+      const wasEditing = Boolean(editingId);
+
+resetForm();
+
+setMessage(
+  wasEditing
+    ? "Orden logística actualizada."
+    : "Orden logística creada."
+);
+
+await loadData();
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -402,8 +498,15 @@ export default function Loads({ token, onCountChange, onOpenOptimizer }) {
       carrier_name: load.carrier_name || "",
       operator_name: load.operator_name || "",
       notes: load.notes || "",
-      vehicle_id: load.vehicle_id ? String(load.vehicle_id) : "",
-      container_id: load.container_id ? String(load.container_id) : "",
+      vehicle_id:
+  load.vehicle_id && !load.container_id
+    ? String(load.vehicle_id)
+    : "",
+
+container_id:
+  load.container_id
+    ? String(load.container_id)
+    : "",
     });
     setItems(load.items.map((item) => ({
       product_id: item.product_id,

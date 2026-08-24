@@ -265,6 +265,119 @@ function isInsideContainer(candidate, dimensions) {
     candidate.z + candidate.height <= dimensions.height + EPSILON
   );
 }
+function getProjectedBalance({
+  placedItems,
+  candidate,
+  candidateWeight,
+  dimensions,
+}) {
+  let totalWeight = 0;
+
+  let momentX = 0;
+  let momentY = 0;
+
+  let leftWeight = 0;
+  let rightWeight = 0;
+
+  placedItems.forEach((item) => {
+    const weight = Math.max(
+      toNumber(item?.product?.weight_kg),
+      EPSILON
+    );
+
+    const centerX =
+      toNumber(item.x) +
+      toNumber(item.length) / 2;
+
+    const centerY =
+      toNumber(item.y) +
+      toNumber(item.width) / 2;
+
+    totalWeight += weight;
+
+    momentX += weight * centerX;
+    momentY += weight * centerY;
+
+    if (centerY <= dimensions.width / 2) {
+      leftWeight += weight;
+    } else {
+      rightWeight += weight;
+    }
+  });
+
+  const weight = Math.max(
+    toNumber(candidateWeight),
+    EPSILON
+  );
+
+  const candidateCenterX =
+    candidate.x +
+    candidate.length / 2;
+
+  const candidateCenterY =
+    candidate.y +
+    candidate.width / 2;
+
+  totalWeight += weight;
+
+  momentX +=
+    weight * candidateCenterX;
+
+  momentY +=
+    weight * candidateCenterY;
+
+  if (
+    candidateCenterY <=
+    dimensions.width / 2
+  ) {
+    leftWeight += weight;
+  } else {
+    rightWeight += weight;
+  }
+
+  const centerX =
+    totalWeight > 0
+      ? momentX / totalWeight
+      : dimensions.length / 2;
+
+  const centerY =
+    totalWeight > 0
+      ? momentY / totalWeight
+      : dimensions.width / 2;
+
+  const longitudinalOffset =
+    dimensions.length > 0
+      ? Math.abs(
+          centerX -
+            dimensions.length / 2
+        ) / dimensions.length
+      : 0;
+
+  const lateralOffset =
+    dimensions.width > 0
+      ? Math.abs(
+          centerY -
+            dimensions.width / 2
+        ) / dimensions.width
+      : 0;
+
+  const lateralDistributionDifference =
+    totalWeight > 0
+      ? Math.abs(
+          leftWeight - rightWeight
+        ) / totalWeight
+      : 0;
+
+  return {
+    centerX,
+    centerY,
+    longitudinalOffset,
+    lateralOffset,
+    lateralDistributionDifference,
+    leftWeight,
+    rightWeight,
+  };
+}
 
 function runStrategy(capacity, selectedItems, strategy) {
   const dimensions = {
@@ -329,22 +442,122 @@ function runStrategy(capacity, selectedItems, strategy) {
         const support = getSupportRatio(candidate, placed);
         if (support + EPSILON < 0.8) return;
 
-        const centerX = candidate.x + candidate.length / 2;
-        const centerY = candidate.y + candidate.width / 2;
-        const distanceX = Math.abs(centerX - dimensions.length / 2) / Math.max(dimensions.length, EPSILON);
-        const distanceY = Math.abs(centerY - dimensions.width / 2) / Math.max(dimensions.width, EPSILON);
-        const stackingBonus = strategy.preferStacking && candidate.z > EPSILON
-          ? toNumber(strategy.weights.stackingBonus, 320000)
-          : 0;
+        const centerX =
+  candidate.x +
+  candidate.length / 2;
 
-        const score =
-          candidate.z * toNumber(strategy.weights.height) +
-          candidate.y * toNumber(strategy.weights.lateral) +
-          candidate.x * toNumber(strategy.weights.depth) +
-          (1 - support) * toNumber(strategy.weights.support) +
-          distanceX * toNumber(strategy.weights.balanceX) +
-          distanceY * toNumber(strategy.weights.balanceY) -
-          stackingBonus;
+const centerY =
+  candidate.y +
+  candidate.width / 2;
+
+const distanceX =
+  Math.abs(
+    centerX -
+      dimensions.length / 2
+  ) /
+  Math.max(
+    dimensions.length,
+    EPSILON
+  );
+
+const distanceY =
+  Math.abs(
+    centerY -
+      dimensions.width / 2
+  ) /
+  Math.max(
+    dimensions.width,
+    EPSILON
+  );
+
+const projectedBalance =
+  getProjectedBalance({
+    placedItems: placed,
+    candidate,
+    candidateWeight: productWeight,
+    dimensions,
+  });
+
+const stackingBonus =
+  strategy.preferStacking &&
+  candidate.z > EPSILON
+    ? toNumber(
+        strategy.weights.stackingBonus,
+        320000
+      )
+    : 0;
+
+/*
+  El balance global recibe una penalización
+  mucho mayor que la posición aislada del bulto.
+
+  Esto evita que una solución compacta termine
+  cargando 70/30 o 75/25 hacia un lateral.
+*/
+
+const globalLongitudinalPenalty =
+  projectedBalance.longitudinalOffset *
+  toNumber(
+    strategy.weights.balanceX,
+    1
+  ) *
+  3;
+
+const globalLateralPenalty =
+  projectedBalance.lateralOffset *
+  toNumber(
+    strategy.weights.balanceY,
+    1
+  ) *
+  8;
+
+const sideDistributionPenalty =
+  projectedBalance
+    .lateralDistributionDifference *
+  toNumber(
+    strategy.weights.balanceY,
+    1
+  ) *
+  10;
+
+const score =
+  candidate.z *
+    toNumber(
+      strategy.weights.height
+    ) +
+
+  candidate.y *
+    toNumber(
+      strategy.weights.lateral
+    ) +
+
+  candidate.x *
+    toNumber(
+      strategy.weights.depth
+    ) +
+
+  (1 - support) *
+    toNumber(
+      strategy.weights.support
+    ) +
+
+  distanceX *
+    toNumber(
+      strategy.weights.balanceX
+    ) +
+
+  distanceY *
+    toNumber(
+      strategy.weights.balanceY
+    ) +
+
+  globalLongitudinalPenalty +
+
+  globalLateralPenalty +
+
+  sideDistributionPenalty -
+
+  stackingBonus;
 
         candidates.push({ candidate, score });
       });
@@ -399,7 +612,96 @@ function getFloorFootprint(result) {
     );
   }, 0);
 }
+function getSolutionBalance(
+  capacity,
+  result
+) {
+  const width =
+    toNumber(
+      capacity?.internal_width_m
+    );
 
+  const length =
+    toNumber(
+      capacity?.internal_length_m
+    );
+
+  let totalWeight = 0;
+
+  let momentX = 0;
+  let momentY = 0;
+
+  let leftWeight = 0;
+  let rightWeight = 0;
+
+  result.placed.forEach((item) => {
+    const weight = Math.max(
+      toNumber(
+        item?.product?.weight_kg
+      ),
+      EPSILON
+    );
+
+    const centerX =
+      toNumber(item.x) +
+      toNumber(item.length) / 2;
+
+    const centerY =
+      toNumber(item.y) +
+      toNumber(item.width) / 2;
+
+    totalWeight += weight;
+
+    momentX +=
+      weight * centerX;
+
+    momentY +=
+      weight * centerY;
+
+    if (centerY <= width / 2) {
+      leftWeight += weight;
+    } else {
+      rightWeight += weight;
+    }
+  });
+
+  if (totalWeight <= 0) {
+    return {
+      lateralDifference: 0,
+      longitudinalOffset: 0,
+      lateralOffset: 0,
+    };
+  }
+
+  const centerX =
+    momentX / totalWeight;
+
+  const centerY =
+    momentY / totalWeight;
+
+  return {
+    lateralDifference:
+      Math.abs(
+        leftWeight - rightWeight
+      ) / totalWeight,
+
+    longitudinalOffset:
+      length > 0
+        ? Math.abs(
+            centerX -
+              length / 2
+          ) / length
+        : 0,
+
+    lateralOffset:
+      width > 0
+        ? Math.abs(
+            centerY -
+              width / 2
+          ) / width
+        : 0,
+  };
+}
 export function runIntelligentOptimization(
   capacity,
   selectedItems
@@ -418,41 +720,121 @@ export function runIntelligentOptimization(
     });
 
     return {
-      strategy,
-      result,
-      evaluation,
-      floorFootprint: getFloorFootprint(result),
-    };
+  strategy,
+  result,
+  evaluation,
+  floorFootprint:
+    getFloorFootprint(result),
+
+  balance:
+    getSolutionBalance(
+      capacity,
+      result
+    ),
+};
   }).sort((first, second) => {
-    const placedDifference =
-      second.evaluation.placedCount -
-      first.evaluation.placedCount;
+  /*
+    PRIORIDAD 1
+    Colocar la mayor cantidad posible.
+  */
+  const placedDifference =
+    second.evaluation.placedCount -
+    first.evaluation.placedCount;
 
-    if (placedDifference !== 0) {
-      return placedDifference;
-    }
+  if (placedDifference !== 0) {
+    return placedDifference;
+  }
 
-    const rejectedDifference =
-      first.evaluation.rejectedCount -
-      second.evaluation.rejectedCount;
+  /*
+    PRIORIDAD 2
+    Menor cantidad de rechazados.
+  */
+  const rejectedDifference =
+    first.evaluation.rejectedCount -
+    second.evaluation.rejectedCount;
 
-    if (rejectedDifference !== 0) {
-      return rejectedDifference;
-    }
+  if (rejectedDifference !== 0) {
+    return rejectedDifference;
+  }
 
-    const floorDifference =
-      first.floorFootprint -
-      second.floorFootprint;
+  /*
+    PRIORIDAD 3
+    Balance lateral.
 
-    if (Math.abs(floorDifference) > EPSILON) {
-      return floorDifference;
-    }
+    Entre dos soluciones que cargan lo mismo,
+    elegimos primero la más cercana a 50 / 50.
+  */
+  const lateralDistributionDifference =
+    first.balance.lateralDifference -
+    second.balance.lateralDifference;
 
-    return (
-      second.evaluation.rawScore -
-      first.evaluation.rawScore
-    );
-  });
+  if (
+    Math.abs(
+      lateralDistributionDifference
+    ) > EPSILON
+  ) {
+    return lateralDistributionDifference;
+  }
+
+  /*
+    PRIORIDAD 4
+    Centro lateral.
+  */
+  const lateralCenterDifference =
+    first.balance.lateralOffset -
+    second.balance.lateralOffset;
+
+  if (
+    Math.abs(
+      lateralCenterDifference
+    ) > EPSILON
+  ) {
+    return lateralCenterDifference;
+  }
+
+  /*
+    PRIORIDAD 5
+    Balance frente / fondo.
+  */
+  const longitudinalDifference =
+    first.balance.longitudinalOffset -
+    second.balance.longitudinalOffset;
+
+  if (
+    Math.abs(
+      longitudinalDifference
+    ) > EPSILON
+  ) {
+    return longitudinalDifference;
+  }
+
+  /*
+    PRIORIDAD 6
+    Calidad general calculada
+    por evaluateSolution.
+  */
+  const qualityDifference =
+    second.evaluation.rawScore -
+    first.evaluation.rawScore;
+
+  if (
+    Math.abs(
+      qualityDifference
+    ) > EPSILON
+  ) {
+    return qualityDifference;
+  }
+
+  /*
+    PRIORIDAD 7
+    Finalmente elegimos la solución
+    que ocupa menos suelo.
+  */
+  return (
+    first.floorFootprint -
+    second.floorFootprint
+  );
+});
 
   const best = alternatives[0];
 

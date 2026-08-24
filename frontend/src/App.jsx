@@ -80,6 +80,13 @@ export default function App() {
     }
     setActivePage("optimizer");
   }
+  function handleEditLoad(loadId) {
+  if (loadId !== undefined && loadId !== null) {
+    localStorage.setItem("gerbar_edit_load_id", String(loadId));
+  }
+
+  setActivePage("loads");
+}
 
   if (!token) {
     return (
@@ -171,9 +178,17 @@ export default function App() {
             token={token}
             onCountChange={(total)=>setCounts((c)=>({...c, loads: total}))}
             onOpenOptimizer={handleOpenOptimizer}
+            
           />
+          
         )}
-        {activePage === "optimizer" && <Optimizer token={token} />}
+        
+        {activePage === "optimizer" && (
+  <Optimizer
+    token={token}
+    onEditLoad={handleEditLoad}
+  />
+)}
       </section>
     </main>
   );

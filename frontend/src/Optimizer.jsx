@@ -7,7 +7,7 @@ import { generateLoadReport } from "./reports/LoadReportGenerator.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 
-export default function Optimizer({ token }) {
+export default function Optimizer({ token, onEditLoad }) {
   const [vehicles, setVehicles] = useState([]);
   const [containers, setContainers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -25,6 +25,7 @@ export default function Optimizer({ token }) {
   const [optimizationResult, setOptimizationResult] = useState({
     placed: [],
     rejected: [],
+    
   });
   const [error, setError] = useState("");
   const [runningIntelligent, setRunningIntelligent] = useState(false);
@@ -32,6 +33,13 @@ export default function Optimizer({ token }) {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyRef = useRef([]);
   const applyingHistoryRef = useRef(false);
+  <button
+  type="button"
+  className="plan-secondary-button"
+  onClick={() => onEditLoad?.(selectedLoad.id)}
+>
+  ✏️ Editar datos y productos de la orden
+</button>
 
   useEffect(() => {
     if (!token) return;
@@ -757,17 +765,12 @@ export default function Optimizer({ token }) {
         : 0
     );
 
-    if (tareWeight <= 0) {
-      const tareInput = window.prompt(
-        "Este contenedor no tiene tara registrada. Ingresá la tara en kg:",
-        "0"
-      );
-
-      tareWeight = Math.max(
-        0,
-        Number(tareInput || 0) || 0
-      );
-    }
+ if (tareWeight <= 0) {
+  setError(
+    "La unidad seleccionada no tiene tara registrada. Editá el vehículo o contenedor y cargá la tara antes de generar el informe."
+  );
+  return;
+}
 
     const grossWeight = usedWeight + tareWeight;
 
@@ -1224,7 +1227,168 @@ export default function Optimizer({ token }) {
               </small>
             </div>
           </div>
+{activePlacedItems.length > 0 && (
+  <section className="weight-balance-card">
+    <div className="weight-balance-header">
+      <div>
+        <span className="weight-balance-eyebrow">
+          DISTRIBUCIÓN DE PESO
+        </span>
+        <h3>Balance de la carga</h3>
+      </div>
 
+      <div
+        className={`weight-balance-status ${
+          weightBalance?.warnings?.length > 0
+            ? "weight-balance-status-warning"
+            : "weight-balance-status-ok"
+        }`}
+      >
+        {weightBalance?.warnings?.length > 0
+          ? "⚠️ Revisar"
+          : "✓ Equilibrada"}
+      </div>
+    </div>
+
+    <div className="weight-balance-layout">
+      <div className="weight-balance-distribution">
+        <div className="balance-axis">
+          <div className="balance-axis-title">
+            <span>Distribución longitudinal</span>
+          </div>
+
+          <div className="balance-values">
+            <span>
+              Frente{" "}
+              <strong>
+                {Number(
+                  weightBalance?.distribution?.front || 0
+                ).toFixed(1)}
+                %
+              </strong>
+            </span>
+
+            <span>
+              Fondo{" "}
+              <strong>
+                {Number(
+                  weightBalance?.distribution?.back || 0
+                ).toFixed(1)}
+                %
+              </strong>
+            </span>
+          </div>
+
+          <div className="balance-bar">
+            <div
+              className="balance-bar-primary"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Number(
+                      weightBalance?.distribution?.front || 0
+                    )
+                  )
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="balance-axis">
+          <div className="balance-axis-title">
+            <span>Distribución lateral</span>
+          </div>
+
+          <div className="balance-values">
+            <span>
+              Izquierda{" "}
+              <strong>
+                {Number(
+                  weightBalance?.distribution?.left || 0
+                ).toFixed(1)}
+                %
+              </strong>
+            </span>
+
+            <span>
+              Derecha{" "}
+              <strong>
+                {Number(
+                  weightBalance?.distribution?.right || 0
+                ).toFixed(1)}
+                %
+              </strong>
+            </span>
+          </div>
+
+          <div className="balance-bar">
+            <div
+              className="balance-bar-primary"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Number(
+                      weightBalance?.distribution?.left || 0
+                    )
+                  )
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="center-gravity-panel">
+        <span className="center-gravity-title">
+          CENTRO DE GRAVEDAD
+        </span>
+
+        <div className="center-gravity-grid">
+          <div>
+            <span>X · Largo</span>
+            <strong>
+              {Number(weightBalance?.center?.x || 0).toFixed(2)} m
+            </strong>
+          </div>
+
+          <div>
+            <span>Y · Ancho</span>
+            <strong>
+              {Number(weightBalance?.center?.y || 0).toFixed(2)} m
+            </strong>
+          </div>
+
+          <div>
+            <span>Z · Altura</span>
+            <strong>
+              {Number(weightBalance?.center?.z || 0).toFixed(2)} m
+            </strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {weightBalance?.warnings?.length > 0 ? (
+      <div className="weight-balance-warnings">
+        {weightBalance.warnings.map((warning, index) => (
+          <div key={`${warning}-${index}`}>
+            ⚠️ {warning}
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="weight-balance-ok-message">
+        ✓ La distribución de peso se encuentra dentro de los
+        parámetros de equilibrio.
+      </div>
+    )}
+  </section>
+)}
           {optimizationResult.rejected.length > 0 && (
             <div className="rejected-products">
               <h3>Productos sin espacio</h3>
