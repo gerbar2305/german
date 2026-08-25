@@ -174,10 +174,23 @@ export function calculateWeightBalance({ capacity, placedItems = [] }) {
     );
   }
 
-  let axleLoads = null;
+    let axleLoads = null;
 
-  const frontAxleX = Number(capacity?.front_axle_position_m);
-  const rearAxleX = Number(capacity?.rear_axle_position_m);
+  const frontAxleX = Number(
+    capacity?.front_axle_position_m
+  );
+
+  const rearAxleX = Number(
+    capacity?.rear_axle_position_m
+  );
+
+  const frontAxleMax = numberOrZero(
+    capacity?.front_axle_max_kg
+  );
+
+  const rearAxleMax = numberOrZero(
+    capacity?.rear_axle_max_kg
+  );
 
   if (
     totalWeight > 0 &&
@@ -185,16 +198,180 @@ export function calculateWeightBalance({ capacity, placedItems = [] }) {
     Number.isFinite(rearAxleX) &&
     rearAxleX > frontAxleX
   ) {
-    const wheelbase = rearAxleX - frontAxleX;
+    const wheelbase =
+      rearAxleX - frontAxleX;
 
-    const rear =
-      totalWeight * ((center.x - frontAxleX) / wheelbase);
+    /*
+      Reacciones producidas únicamente por
+      la mercadería cargada.
 
-    const front = totalWeight - rear;
+      Fórmula de equilibrio estático:
+
+      Rtrasero =
+        Peso ×
+        (CentroCarga - EjeDelantero)
+        / DistanciaEntreEjes
+
+      Rdelantero =
+        Peso - Rtrasero
+    */
+
+    let rearCargoLoad =
+      totalWeight *
+      ((center.x - frontAxleX) /
+        wheelbase);
+
+    let frontCargoLoad =
+      totalWeight - rearCargoLoad;
+
+    /*
+      Si el centro de carga queda por fuera
+      de la distancia entre ejes, matemáticamente
+      podría producir una reacción negativa.
+
+      Para la interfaz evitamos mostrar
+      valores negativos, pero dejamos advertencia.
+    */
+
+    if (rearCargoLoad < 0) {
+      warnings.push(
+        "El centro de la carga se encuentra por delante del eje delantero."
+      );
+    }
+
+    if (frontCargoLoad < 0) {
+      warnings.push(
+        "El centro de la carga se encuentra por detrás del eje trasero."
+      );
+    }
+
+    frontCargoLoad =
+      Math.max(0, frontCargoLoad);
+
+    rearCargoLoad =
+      Math.max(0, rearCargoLoad);
+
+    const frontUsagePercent =
+      frontAxleMax > 0
+        ? (frontCargoLoad /
+            frontAxleMax) *
+          100
+        : 0;
+
+    const rearUsagePercent =
+      rearAxleMax > 0
+        ? (rearCargoLoad /
+            rearAxleMax) *
+          100
+        : 0;
+
+    const frontRemaining =
+      frontAxleMax > 0
+        ? Math.max(
+            0,
+            frontAxleMax -
+              frontCargoLoad
+          )
+        : null;
+
+    const rearRemaining =
+      rearAxleMax > 0
+        ? Math.max(
+            0,
+            rearAxleMax -
+              rearCargoLoad
+          )
+        : null;
+
+    const frontOverload =
+      frontAxleMax > 0
+        ? Math.max(
+            0,
+            frontCargoLoad -
+              frontAxleMax
+          )
+        : 0;
+
+    const rearOverload =
+      rearAxleMax > 0
+        ? Math.max(
+            0,
+            rearCargoLoad -
+              rearAxleMax
+          )
+        : 0;
+
+    /*
+      Estas advertencias son sobre
+      la reacción de la mercadería.
+
+      Más adelante agregaremos la tara
+      distribuida por eje para obtener
+      peso total real por eje.
+    */
+
+    if (frontOverload > 0) {
+      warnings.push(
+        `La carga transmitida al eje delantero supera su límite configurado por ${frontOverload.toFixed(
+          0
+        )} kg.`
+      );
+    }
+
+    if (rearOverload > 0) {
+      warnings.push(
+        `La carga transmitida al eje trasero supera su límite configurado por ${rearOverload.toFixed(
+          0
+        )} kg.`
+      );
+    }
 
     axleLoads = {
-      front: Math.max(0, front),
-      rear: Math.max(0, rear),
+      configured: true,
+
+      wheelbase,
+
+      frontPosition: frontAxleX,
+      rearPosition: rearAxleX,
+
+      /*
+        Peso generado por la mercadería
+      */
+      frontCargoLoad,
+      rearCargoLoad,
+
+      /*
+        Mantengo front/rear por compatibilidad
+        con cualquier código anterior.
+      */
+      front: frontCargoLoad,
+      rear: rearCargoLoad,
+
+      frontMax: frontAxleMax,
+      rearMax: rearAxleMax,
+
+      frontUsagePercent,
+      rearUsagePercent,
+
+      frontRemaining,
+      rearRemaining,
+
+      frontOverload,
+      rearOverload,
+
+      frontOverloaded:
+        frontOverload > 0,
+
+      rearOverloaded:
+        rearOverload > 0,
+
+      /*
+        Importante:
+        todavía no incluye distribución
+        de la tara del vehículo.
+      */
+      includesTare: false,
+      calculationMode: "cargo_reaction",
     };
   }
 

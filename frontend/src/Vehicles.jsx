@@ -7,12 +7,20 @@ const initialForm = {
   name: "",
   plate: "",
   vehicle_type: "truck",
+
   internal_length_m: "",
   internal_width_m: "",
   internal_height_m: "",
+
   tare_weight_kg: "",
   max_gross_weight_kg: "",
   max_payload_kg: "",
+
+  // Configuración de ejes
+  front_axle_position_m: "",
+  rear_axle_position_m: "",
+  front_axle_max_kg: "",
+  rear_axle_max_kg: "",
 };
 
 export default function Vehicles({ token, onCountChange }) {
@@ -99,6 +107,10 @@ export default function Vehicles({ token, onCountChange }) {
       tare_weight_kg: String(vehicle.tare_weight_kg ?? 0),
       max_gross_weight_kg: String(vehicle.max_gross_weight_kg ?? 0),
       max_payload_kg: String(vehicle.max_payload_kg ?? 0),
+      front_axle_position_m: String(vehicle.front_axle_position_m ?? ""),
+rear_axle_position_m: String(vehicle.rear_axle_position_m ?? ""),
+front_axle_max_kg: String(vehicle.front_axle_max_kg ?? ""),
+rear_axle_max_kg: String(vehicle.rear_axle_max_kg ?? ""),
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -161,14 +173,36 @@ export default function Vehicles({ token, onCountChange }) {
     }
 
     const payload = {
-      ...form,
-      internal_length_m: Number(form.internal_length_m),
-      internal_width_m: Number(form.internal_width_m),
-      internal_height_m: Number(form.internal_height_m),
-      tare_weight_kg: tareWeight,
-      max_gross_weight_kg: maxGrossWeight,
-      max_payload_kg: maxPayload,
-    };
+  ...form,
+
+  internal_length_m: Number(form.internal_length_m),
+  internal_width_m: Number(form.internal_width_m),
+  internal_height_m: Number(form.internal_height_m),
+
+  tare_weight_kg: tareWeight,
+  max_gross_weight_kg: maxGrossWeight,
+  max_payload_kg: maxPayload,
+
+  front_axle_position_m:
+    form.front_axle_position_m === ""
+      ? 0
+      : Number(form.front_axle_position_m),
+
+  rear_axle_position_m:
+    form.rear_axle_position_m === ""
+      ? 0
+      : Number(form.rear_axle_position_m),
+
+  front_axle_max_kg:
+    form.front_axle_max_kg === ""
+      ? 0
+      : Number(form.front_axle_max_kg),
+
+  rear_axle_max_kg:
+    form.rear_axle_max_kg === ""
+      ? 0
+      : Number(form.rear_axle_max_kg),
+};
 
     try {
       const response = editingId
@@ -371,6 +405,100 @@ export default function Vehicles({ token, onCountChange }) {
               ? ` = ${calculatedPayload.toLocaleString()} kg`
               : ""}
           </small>
+          <div
+  style={{
+    marginTop: 18,
+    marginBottom: 14,
+    padding: 14,
+    border: "1px solid #dbe3ee",
+    borderRadius: 10,
+    background: "#f8fafc",
+  }}
+>
+  <h3 style={{ marginTop: 0, marginBottom: 6 }}>
+    Configuración de ejes
+  </h3>
+
+  <p
+    style={{
+      marginTop: 0,
+      marginBottom: 14,
+      fontSize: 13,
+      color: "#64748b",
+    }}
+  >
+    Estos datos permitirán calcular la distribución real del peso
+    entre el eje delantero y el eje trasero.
+  </p>
+
+  <div className="dimensions-grid">
+    <div>
+      <label htmlFor="front_axle_position_m">
+        Posición eje delantero (m)
+      </label>
+      <input
+        id="front_axle_position_m"
+        name="front_axle_position_m"
+        type="number"
+        step="0.01"
+        min="0"
+        value={form.front_axle_position_m}
+        onChange={handleChange}
+        placeholder="Ejemplo: 1.20"
+      />
+    </div>
+
+    <div>
+      <label htmlFor="rear_axle_position_m">
+        Posición eje trasero (m)
+      </label>
+      <input
+        id="rear_axle_position_m"
+        name="rear_axle_position_m"
+        type="number"
+        step="0.01"
+        min="0"
+        value={form.rear_axle_position_m}
+        onChange={handleChange}
+        placeholder="Ejemplo: 8.50"
+      />
+    </div>
+  </div>
+
+  <div className="dimensions-grid">
+    <div>
+      <label htmlFor="front_axle_max_kg">
+        Carga máxima eje delantero (kg)
+      </label>
+      <input
+        id="front_axle_max_kg"
+        name="front_axle_max_kg"
+        type="number"
+        step="1"
+        min="0"
+        value={form.front_axle_max_kg}
+        onChange={handleChange}
+        placeholder="Ejemplo: 7500"
+      />
+    </div>
+
+    <div>
+      <label htmlFor="rear_axle_max_kg">
+        Carga máxima eje trasero (kg)
+      </label>
+      <input
+        id="rear_axle_max_kg"
+        name="rear_axle_max_kg"
+        type="number"
+        step="1"
+        min="0"
+        value={form.rear_axle_max_kg}
+        onChange={handleChange}
+        placeholder="Ejemplo: 18000"
+      />
+    </div>
+  </div>
+</div>
 
           <button type="submit" disabled={loading}>
             {loading

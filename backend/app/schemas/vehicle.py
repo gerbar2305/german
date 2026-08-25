@@ -16,9 +16,18 @@ class VehicleCreate(BaseModel):
     max_gross_weight_kg: float = 0
     max_payload_kg: float
 
+    # Configuración opcional de ejes
+    front_axle_position_m: float | None = None
+    rear_axle_position_m: float | None = None
+
+    front_axle_max_kg: float | None = None
+    rear_axle_max_kg: float | None = None
+
 
 class VehicleRead(VehicleCreate):
     id: int
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True
+    )
