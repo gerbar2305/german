@@ -16,6 +16,9 @@ class Product(Base):
     width_m: Mapped[float] = mapped_column(Float)
     height_m: Mapped[float] = mapped_column(Float)
     weight_kg: Mapped[float] = mapped_column(Float)
+    max_stack_weight_kg: Mapped[float | None] = mapped_column(
+    nullable=True
+)
     stackable: Mapped[bool] = mapped_column(Boolean, default=True)
     rotatable: Mapped[bool] = mapped_column(Boolean, default=True)
     fragile: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -23,6 +23,10 @@ class VehicleCreate(BaseModel):
     front_axle_max_kg: float | None = None
     rear_axle_max_kg: float | None = None
 
+    # Tara soportada por cada eje con el vehículo vacío
+    front_axle_tare_kg: float | None = None
+    rear_axle_tare_kg: float | None = None
+
 
 class VehicleRead(VehicleCreate):
     id: int

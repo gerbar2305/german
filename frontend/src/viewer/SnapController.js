@@ -13,7 +13,11 @@ function closest(value, targets, threshold) {
 
   for (const target of targets) {
     const distance = Math.abs(value - target);
-    if (distance <= threshold && distance < bestDistance) {
+
+    if (
+      distance <= threshold &&
+      distance < bestDistance
+    ) {
       best = target;
       bestDistance = distance;
     }
@@ -27,7 +31,9 @@ function unique(values) {
     ...new Set(
       values
         .filter(Number.isFinite)
-        .map((value) => Number(value.toFixed(6)))
+        .map((value) =>
+          Number(value.toFixed(6))
+        )
     ),
   ];
 }
@@ -39,56 +45,110 @@ export function getSnappedCandidate({
   capacity,
   threshold = DEFAULT_THRESHOLD,
 }) {
-  if (!candidate || !capacity) return candidate;
+  if (!candidate || !capacity) {
+    return candidate;
+  }
 
-  const containerLength = toNumber(capacity.internal_length_m);
-  const containerWidth = toNumber(capacity.internal_width_m);
-  const footprint = getRotatedFootprint(
-    candidate.length,
-    candidate.width,
-    candidate.rotationY
-  );
+  const containerLength =
+    toNumber(capacity.internal_length_m);
 
-  const xTargets = [0, containerLength - footprint.length];
-  const yTargets = [0, containerWidth - footprint.width];
+  const containerWidth =
+    toNumber(capacity.internal_width_m);
+
+  const footprint =
+    getRotatedFootprint(
+      candidate.length,
+      candidate.width,
+      candidate.rotationY
+    );
+
+  const xTargets = [
+    0,
+    containerLength - footprint.length,
+  ];
+
+  const yTargets = [
+    0,
+    containerWidth - footprint.width,
+  ];
 
   placedItems.forEach((item, index) => {
-    if (index === movingIndex) return;
+    if (index === movingIndex) {
+      return;
+    }
 
-    const itemFootprint = getItemFootprint(item);
+    const itemFootprint =
+      getItemFootprint(item);
+
     const itemX = toNumber(item.x);
     const itemY = toNumber(item.y);
     const itemZ = toNumber(item.z);
 
-    if (
-      Math.abs(itemZ - toNumber(candidate.z)) >
-      Math.max(threshold, EPSILON)
-    ) {
-      return;
-    }
+    const itemHeight =
+  toNumber(
+    item?.height ??
+      item?.product?.height_m
+  );
+
+const itemTopZ =
+  itemZ + itemHeight;
+
+const candidateZ =
+  toNumber(candidate.z);
+
+const sameLevel =
+  Math.abs(
+    itemZ - candidateZ
+  ) <= Math.max(threshold, EPSILON);
+
+const supportsCandidate =
+  Math.abs(
+    itemTopZ - candidateZ
+  ) <= Math.max(threshold, EPSILON);
+
+if (
+  !sameLevel &&
+  !supportsCandidate
+) {
+  return;
+}
 
     xTargets.push(
       itemX - footprint.length,
       itemX + itemFootprint.length,
       itemX,
-      itemX + itemFootprint.length - footprint.length
+      itemX +
+        itemFootprint.length -
+        footprint.length
     );
 
     yTargets.push(
       itemY - footprint.width,
       itemY + itemFootprint.width,
       itemY,
-      itemY + itemFootprint.width - footprint.width
+      itemY +
+        itemFootprint.width -
+        footprint.width
     );
   });
 
   return {
     ...candidate,
+
     x: Number(
-      closest(toNumber(candidate.x), unique(xTargets), threshold).toFixed(4)
+      closest(
+        toNumber(candidate.x),
+        unique(xTargets),
+        threshold
+      ).toFixed(4)
     ),
+
     y: Number(
-      closest(toNumber(candidate.y), unique(yTargets), threshold).toFixed(4)
+      closest(
+        toNumber(candidate.y),
+        unique(yTargets),
+        threshold
+      ).toFixed(4)
     ),
   };
 }

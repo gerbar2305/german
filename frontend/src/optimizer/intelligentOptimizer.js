@@ -32,7 +32,10 @@ const STRATEGIES = [
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : fallback;
 }
 
 function getProductVolume(product) {
@@ -44,18 +47,31 @@ function getProductVolume(product) {
 }
 
 function getProductColor(product) {
-  const numericId = Number(product?.id);
+  const numericId =
+    Number(product?.id);
 
   if (Number.isFinite(numericId)) {
-    return COLORS[Math.abs(numericId) % COLORS.length];
+    return COLORS[
+      Math.abs(numericId) %
+        COLORS.length
+    ];
   }
 
-  const hash = [...String(product?.name || "")].reduce(
-    (total, character) => total + character.charCodeAt(0),
+  const hash = [
+    ...String(
+      product?.name || ""
+    ),
+  ].reduce(
+    (total, character) =>
+      total +
+      character.charCodeAt(0),
     0
   );
 
-  return COLORS[Math.abs(hash) % COLORS.length];
+  return COLORS[
+    Math.abs(hash) %
+      COLORS.length
+  ];
 }
 
 function getMaximumWeight(capacity) {
@@ -67,10 +83,18 @@ function getMaximumWeight(capacity) {
   );
 }
 
-function getOrientations(product, strategy) {
-  const length = toNumber(product?.length_m);
-  const width = toNumber(product?.width_m);
-  const height = toNumber(product?.height_m);
+function getOrientations(
+  product,
+  strategy
+) {
+  const length =
+    toNumber(product?.length_m);
+
+  const width =
+    toNumber(product?.width_m);
+
+  const height =
+    toNumber(product?.height_m);
 
   const orientations = [
     {
@@ -84,7 +108,9 @@ function getOrientations(product, strategy) {
 
   if (
     product?.rotatable &&
-    Math.abs(length - width) > EPSILON
+    Math.abs(
+      length - width
+    ) > EPSILON
   ) {
     orientations.push({
       length: width,
@@ -95,7 +121,10 @@ function getOrientations(product, strategy) {
     });
   }
 
-  if (strategy.orientationOrder === "rotated_first") {
+  if (
+    strategy.orientationOrder ===
+    "rotated_first"
+  ) {
     orientations.reverse();
   }
 
@@ -110,135 +139,272 @@ function getOrientations(product, strategy) {
 function buildUnits(selectedItems) {
   const units = [];
 
-  selectedItems.forEach((selectedItem) => {
-    const quantity = toNumber(selectedItem?.quantity);
+  selectedItems.forEach(
+    (selectedItem) => {
+      const quantity =
+        toNumber(
+          selectedItem?.quantity
+        );
 
-    for (let unit = 0; unit < quantity; unit += 1) {
-      units.push({
-        product: selectedItem.product,
-        unit: unit + 1,
-      });
+      for (
+        let unit = 0;
+        unit < quantity;
+        unit += 1
+      ) {
+        units.push({
+          product:
+            selectedItem.product,
+
+          unit:
+            unit + 1,
+        });
+      }
     }
-  });
+  );
 
   return units;
 }
 
-function sortUnits(units, strategy) {
-  return [...units].sort((first, second) => {
-    const firstVolume = getProductVolume(first.product);
-    const secondVolume = getProductVolume(second.product);
+function sortUnits(
+  units,
+  strategy
+) {
+  return [...units].sort(
+    (first, second) => {
+      const firstVolume =
+        getProductVolume(
+          first.product
+        );
+const firstTotalWeight =
+  toNumber(
+    first.product?.weight_kg
+  ) *
+  first.quantity;
 
-    const firstWeight = toNumber(first.product?.weight_kg);
-    const secondWeight = toNumber(second.product?.weight_kg);
+const secondTotalWeight =
+  toNumber(
+    second.product?.weight_kg
+  ) *
+  second.quantity;
+      const secondVolume =
+        getProductVolume(
+          second.product
+        );
 
-    if (strategy.preferStacking) {
-      const firstStackable =
-        first.product?.stackable !== false ? 1 : 0;
+      const firstWeight =
+        toNumber(
+          first.product
+            ?.weight_kg
+        );
 
-      const secondStackable =
-        second.product?.stackable !== false ? 1 : 0;
+      const secondWeight =
+        toNumber(
+          second.product
+            ?.weight_kg
+        );
 
-      if (firstStackable !== secondStackable) {
-        return secondStackable - firstStackable;
+      if (
+        strategy.preferStacking
+      ) {
+        const firstStackable =
+          first.product
+            ?.stackable !== false
+            ? 1
+            : 0;
+
+        const secondStackable =
+          second.product
+            ?.stackable !== false
+            ? 1
+            : 0;
+
+        if (
+          firstStackable !==
+          secondStackable
+        ) {
+          return (
+            secondStackable -
+            firstStackable
+          );
+        }
       }
-    }
 
-    if (strategy.order === "weight_desc") {
+      if (
+        strategy.order ===
+        "weight_desc"
+      ) {
+        return (
+          secondWeight -
+            firstWeight ||
+          secondVolume -
+            firstVolume
+        );
+      }
+
       return (
-        secondWeight - firstWeight ||
-        secondVolume - firstVolume
+        secondVolume -
+          firstVolume ||
+        secondWeight -
+          firstWeight
       );
     }
-
-    return (
-      secondVolume - firstVolume ||
-      secondWeight - firstWeight
-    );
-  });
-}
-
-function boxesOverlap(first, second) {
-  return !(
-    first.x + first.length <= second.x + EPSILON ||
-    first.x >= second.x + second.length - EPSILON ||
-    first.y + first.width <= second.y + EPSILON ||
-    first.y >= second.y + second.width - EPSILON ||
-    first.z + first.height <= second.z + EPSILON ||
-    first.z >= second.z + second.height - EPSILON
   );
 }
 
-function getSupportRatio(candidate, placedItems) {
-  if (candidate.z <= EPSILON) {
+function boxesOverlap(
+  first,
+  second
+) {
+  return !(
+    first.x +
+      first.length <=
+      second.x +
+        EPSILON ||
+
+    first.x >=
+      second.x +
+        second.length -
+        EPSILON ||
+
+    first.y +
+      first.width <=
+            second.y +
+        EPSILON ||
+
+    first.y >=
+      second.y +
+        second.width -
+        EPSILON ||
+
+    first.z +
+      first.height <=
+      second.z +
+        EPSILON ||
+
+    first.z >=
+      second.z +
+        second.height -
+        EPSILON
+  );
+}
+
+function getSupportRatio(
+  candidate,
+  placedItems
+) {
+  if (
+    candidate.z <=
+    EPSILON
+  ) {
     return 1;
   }
 
   const candidateArea =
-    candidate.length * candidate.width;
+    candidate.length *
+    candidate.width;
 
-  if (candidateArea <= EPSILON) {
+  if (
+    candidateArea <=
+    EPSILON
+  ) {
     return 0;
   }
 
   let supportedArea = 0;
 
-  placedItems.forEach((item) => {
-    const sameLevel =
-      Math.abs(
-        item.z + item.height - candidate.z
-      ) <= EPSILON;
+  placedItems.forEach(
+    (item) => {
+      const sameLevel =
+        Math.abs(
+          item.z +
+            item.height -
+            candidate.z
+        ) <= EPSILON;
 
-    if (
-      !sameLevel ||
-      item.product?.stackable === false
-    ) {
-      return;
+      if (
+        !sameLevel ||
+        item.product
+          ?.stackable === false
+      ) {
+        return;
+      }
+
+      const overlapX =
+        Math.max(
+          0,
+          Math.min(
+            candidate.x +
+              candidate.length,
+
+            item.x +
+              item.length
+          ) -
+            Math.max(
+              candidate.x,
+              item.x
+            )
+        );
+
+      const overlapY =
+        Math.max(
+          0,
+          Math.min(
+            candidate.y +
+              candidate.width,
+
+            item.y +
+              item.width
+          ) -
+            Math.max(
+              candidate.y,
+              item.y
+            )
+        );
+
+      supportedArea +=
+        overlapX *
+        overlapY;
     }
-
-    const overlapX = Math.max(
-      0,
-      Math.min(
-        candidate.x + candidate.length,
-        item.x + item.length
-      ) - Math.max(candidate.x, item.x)
-    );
-
-    const overlapY = Math.max(
-      0,
-      Math.min(
-        candidate.y + candidate.width,
-        item.y + item.width
-      ) - Math.max(candidate.y, item.y)
-    );
-
-    supportedArea += overlapX * overlapY;
-  });
+  );
 
   return Math.min(
     1,
-    supportedArea / candidateArea
+    supportedArea /
+      candidateArea
   );
 }
 
-function isInsideContainer(candidate, dimensions) {
+function isInsideContainer(
+  candidate,
+  dimensions
+) {
   return (
-    candidate.x >= -EPSILON &&
-    candidate.y >= -EPSILON &&
-    candidate.z >= -EPSILON &&
-    candidate.x + candidate.length <=
-      dimensions.length + EPSILON &&
-    candidate.y + candidate.width <=
-      dimensions.width + EPSILON &&
-    candidate.z + candidate.height <=
-      dimensions.height + EPSILON
+    candidate.x >=
+      -EPSILON &&
+
+    candidate.y >=
+      -EPSILON &&
+
+    candidate.z >=
+      -EPSILON &&
+
+    candidate.x +
+      candidate.length <=
+      dimensions.length +
+        EPSILON &&
+
+    candidate.y +
+      candidate.width <=
+      dimensions.width +
+        EPSILON &&
+
+    candidate.z +
+      candidate.height <=
+      dimensions.height +
+        EPSILON
   );
 }
 
-/*
-  Calcula cómo quedaría el centro de gravedad
-  y el balance global si colocamos este candidato.
-*/
 function getProjectedBalance({
   placedItems,
   candidate,
@@ -253,49 +419,83 @@ function getProjectedBalance({
   let leftWeight = 0;
   let rightWeight = 0;
 
-  placedItems.forEach((item) => {
-    const weight = Math.max(
-      toNumber(item?.product?.weight_kg),
+  placedItems.forEach(
+    (item) => {
+      const weight =
+        Math.max(
+          toNumber(
+            item?.product
+              ?.weight_kg
+          ),
+          EPSILON
+        );
+
+      const itemCenterX =
+        toNumber(item.x) +
+        toNumber(
+          item.length
+        ) / 2;
+
+      const itemCenterY =
+        toNumber(item.y) +
+        toNumber(
+          item.width
+        ) / 2;
+
+      totalWeight +=
+        weight;
+
+      momentX +=
+        weight *
+        itemCenterX;
+
+      momentY +=
+        weight *
+        itemCenterY;
+
+      if (
+        itemCenterY <=
+        dimensions.width / 2
+      ) {
+        leftWeight +=
+          weight;
+      } else {
+        rightWeight +=
+          weight;
+      }
+    }
+  );
+
+  const weight =
+    Math.max(
+      toNumber(
+        candidateWeight
+      ),
       EPSILON
     );
 
-    const centerX =
-      toNumber(item.x) +
-      toNumber(item.length) / 2;
-
-    const centerY =
-      toNumber(item.y) +
-      toNumber(item.width) / 2;
-
-    totalWeight += weight;
-
-    momentX += weight * centerX;
-    momentY += weight * centerY;
-
-    if (centerY <= dimensions.width / 2) {
-      leftWeight += weight;
-    } else {
-      rightWeight += weight;
-    }
-  });
-
-  const weight = Math.max(
-    toNumber(candidateWeight),
-    EPSILON
-  );
-
   const candidateCenterX =
-    candidate.x + candidate.length / 2;
+    candidate.x +
+    candidate.length / 2;
 
   const candidateCenterY =
-    candidate.y + candidate.width / 2;
+    candidate.y +
+    candidate.width / 2;
 
   totalWeight += weight;
 
-  momentX += weight * candidateCenterX;
-  momentY += weight * candidateCenterY;
+  momentX +=
+    weight *
+    candidateCenterX;
 
-  if (candidateCenterY <= dimensions.width / 2) {
+  momentY +=
+    weight *
+    candidateCenterY;
+
+  if (
+    candidateCenterY <=
+    dimensions.width / 2
+  ) {
     leftWeight += weight;
   } else {
     rightWeight += weight;
@@ -303,33 +503,41 @@ function getProjectedBalance({
 
   const centerX =
     totalWeight > 0
-      ? momentX / totalWeight
+      ? momentX /
+        totalWeight
       : dimensions.length / 2;
 
   const centerY =
     totalWeight > 0
-      ? momentY / totalWeight
+      ? momentY /
+        totalWeight
       : dimensions.width / 2;
 
   const longitudinalOffset =
     dimensions.length > 0
       ? Math.abs(
-          centerX - dimensions.length / 2
-        ) / dimensions.length
+          centerX -
+            dimensions.length / 2
+        ) /
+        dimensions.length
       : 0;
 
   const lateralOffset =
     dimensions.width > 0
       ? Math.abs(
-          centerY - dimensions.width / 2
-        ) / dimensions.width
+          centerY -
+            dimensions.width / 2
+        ) /
+        dimensions.width
       : 0;
 
   const lateralDistributionDifference =
     totalWeight > 0
       ? Math.abs(
-          leftWeight - rightWeight
-        ) / totalWeight
+          leftWeight -
+            rightWeight
+        ) /
+        totalWeight
       : 0;
 
   return {
@@ -343,57 +551,75 @@ function getProjectedBalance({
     rightWeight,
   };
 }
-
-/*
-  Calcula la zona longitudinal en la que debería
-  quedar el centro de gravedad para respetar
-  ambos límites de eje.
-
-  Fórmulas:
-
-  Eje delantero =
-    W * (rearX - centerX) / wheelbase
-
-  Eje trasero =
-    W * (centerX - frontX) / wheelbase
-
-  De ahí obtenemos:
-
-  centerX mínimo para no exceder eje delantero
-
-  centerX máximo para no exceder eje trasero
-*/
 function getAxleSafeZone({
   capacity,
   totalWeight,
 }) {
-  const frontAxlePosition = Number(
-    capacity?.front_axle_position_m
-  );
+  const frontAxlePosition =
+    Number(
+      capacity?.front_axle_position_m
+    );
 
-  const rearAxlePosition = Number(
-    capacity?.rear_axle_position_m
-  );
+  const rearAxlePosition =
+    Number(
+      capacity?.rear_axle_position_m
+    );
 
-  const frontAxleMax = toNumber(
-    capacity?.front_axle_max_kg
-  );
+  const frontAxleMax =
+    toNumber(
+      capacity?.front_axle_max_kg
+    );
 
-  const rearAxleMax = toNumber(
-    capacity?.rear_axle_max_kg
-  );
+  const rearAxleMax =
+    toNumber(
+      capacity?.rear_axle_max_kg
+    );
+
+  const frontAxleTare =
+    toNumber(
+      capacity?.front_axle_tare_kg
+    );
+
+  const rearAxleTare =
+    toNumber(
+      capacity?.rear_axle_tare_kg
+    );
 
   if (
     totalWeight <= 0 ||
-    !Number.isFinite(frontAxlePosition) ||
-    !Number.isFinite(rearAxlePosition) ||
-    rearAxlePosition <= frontAxlePosition
+    !Number.isFinite(
+      frontAxlePosition
+    ) ||
+    !Number.isFinite(
+      rearAxlePosition
+    ) ||
+    rearAxlePosition <=
+      frontAxlePosition
   ) {
     return null;
   }
 
   const wheelbase =
-    rearAxlePosition - frontAxlePosition;
+    rearAxlePosition -
+    frontAxlePosition;
+
+  const frontCargoCapacity =
+    frontAxleMax > 0
+      ? Math.max(
+          0,
+          frontAxleMax -
+            frontAxleTare
+        )
+      : 0;
+
+  const rearCargoCapacity =
+    rearAxleMax > 0
+      ? Math.max(
+          0,
+          rearAxleMax -
+            rearAxleTare
+        )
+      : 0;
 
   let minimumCenterX =
     frontAxlePosition;
@@ -401,97 +627,106 @@ function getAxleSafeZone({
   let maximumCenterX =
     rearAxlePosition;
 
-  if (frontAxleMax > 0) {
+  if (
+    frontAxleMax > 0
+  ) {
     minimumCenterX =
       rearAxlePosition -
-      (frontAxleMax * wheelbase) /
+      (
+        frontCargoCapacity *
+        wheelbase
+      ) /
         totalWeight;
   }
 
-  if (rearAxleMax > 0) {
+  if (
+    rearAxleMax > 0
+  ) {
     maximumCenterX =
       frontAxlePosition +
-      (rearAxleMax * wheelbase) /
+      (
+        rearCargoCapacity *
+        wheelbase
+      ) /
         totalWeight;
   }
 
-  /*
-    No dejamos que la zona teórica salga
-    de la distancia física entre los ejes.
-  */
-  minimumCenterX = Math.max(
-    frontAxlePosition,
-    minimumCenterX
-  );
+  minimumCenterX =
+    Math.max(
+      frontAxlePosition,
+      minimumCenterX
+    );
 
-  maximumCenterX = Math.min(
-    rearAxlePosition,
-    maximumCenterX
-  );
+  maximumCenterX =
+    Math.min(
+      rearAxlePosition,
+      maximumCenterX
+    );
 
   const feasible =
     minimumCenterX <=
-    maximumCenterX + EPSILON;
+    maximumCenterX +
+      EPSILON;
 
-  /*
-    Si existe una zona legal, apuntamos
-    hacia su centro.
-
-    Si no existe porque la carga total es
-    demasiado grande para ambos límites,
-    apuntamos al punto que reparte mejor
-    el compromiso.
-  */
-  const targetCenterX = feasible
-    ? (
-        minimumCenterX +
-        maximumCenterX
-      ) / 2
-    : (
-        minimumCenterX +
-        maximumCenterX
-      ) / 2;
+  const targetCenterX =
+    (
+      minimumCenterX +
+      maximumCenterX
+    ) /
+    2;
 
   return {
     frontAxlePosition,
     rearAxlePosition,
+
     frontAxleMax,
     rearAxleMax,
+
+    frontAxleTare,
+    rearAxleTare,
+
+    frontCargoCapacity,
+    rearCargoCapacity,
+
     wheelbase,
+
     minimumCenterX,
     maximumCenterX,
     targetCenterX,
+
     feasible,
   };
 }
 
-/*
-  Calcula las reacciones proyectadas y genera
-  una penalización dirigida.
-
-  Esta es la parte que hace que la IA no se
-  limite a detectar una sobrecarga al final:
-  ahora busca activamente desplazar el centro
-  de gravedad hacia la zona segura.
-*/
 function getProjectedAxlePenalty({
   capacity,
   projectedBalance,
 }) {
-  const safeZone = getAxleSafeZone({
-    capacity,
-    totalWeight:
-      projectedBalance.totalWeight,
-  });
+  const safeZone =
+    getAxleSafeZone({
+      capacity,
+
+      totalWeight:
+        projectedBalance.totalWeight,
+    });
 
   if (!safeZone) {
     return {
       penalty: 0,
+
+      frontCargoLoad: 0,
+      rearCargoLoad: 0,
+
       frontLoad: 0,
       rearLoad: 0,
+
       frontOverload: 0,
       rearOverload: 0,
       totalOverload: 0,
+
+      frontUsagePercent: 0,
+      rearUsagePercent: 0,
+
       safeZone: null,
     };
   }
@@ -499,9 +734,15 @@ function getProjectedAxlePenalty({
   const {
     frontAxlePosition,
     rearAxlePosition,
+
     frontAxleMax,
     rearAxleMax,
+
+    frontAxleTare,
+    rearAxleTare,
+
     wheelbase,
+
     minimumCenterX,
     maximumCenterX,
     targetCenterX,
@@ -510,7 +751,7 @@ function getProjectedAxlePenalty({
   const totalWeight =
     projectedBalance.totalWeight;
 
-  const rawRearLoad =
+  const rawRearCargoLoad =
     totalWeight *
     (
       (
@@ -520,20 +761,36 @@ function getProjectedAxlePenalty({
       wheelbase
     );
 
-  const rawFrontLoad =
-    totalWeight - rawRearLoad;
+  const rawFrontCargoLoad =
+    totalWeight -
+    rawRearCargoLoad;
+
+  const frontCargoLoad =
+    Math.max(
+      0,
+      rawFrontCargoLoad
+    );
+
+  const rearCargoLoad =
+    Math.max(
+      0,
+      rawRearCargoLoad
+    );
 
   const frontLoad =
-    Math.max(0, rawFrontLoad);
+    frontAxleTare +
+    frontCargoLoad;
 
   const rearLoad =
-    Math.max(0, rawRearLoad);
+    rearAxleTare +
+    rearCargoLoad;
 
   const frontOverload =
     frontAxleMax > 0
       ? Math.max(
           0,
-          frontLoad - frontAxleMax
+          frontLoad -
+            frontAxleMax
         )
       : 0;
 
@@ -541,7 +798,8 @@ function getProjectedAxlePenalty({
     rearAxleMax > 0
       ? Math.max(
           0,
-          rearLoad - rearAxleMax
+          rearLoad -
+            rearAxleMax
         )
       : 0;
 
@@ -567,14 +825,8 @@ function getProjectedAxlePenalty({
         100
       : 0;
 
-  /*
-    Si estamos delante del mínimo seguro,
-    hay que mover carga hacia atrás.
-
-    Si estamos detrás del máximo seguro,
-    hay que mover carga hacia adelante.
-  */
-  let distanceOutsideSafeZone = 0;
+  let distanceOutsideSafeZone =
+    0;
 
   if (
     projectedBalance.centerX <
@@ -592,11 +844,6 @@ function getProjectedAxlePenalty({
       maximumCenterX;
   }
 
-  /*
-    Incluso dentro de la zona legal,
-    premiamos acercarnos al centro de
-    la zona segura para conservar margen.
-  */
   const distanceToTarget =
     Math.abs(
       projectedBalance.centerX -
@@ -607,7 +854,8 @@ function getProjectedAxlePenalty({
     frontAxleMax > 0
       ? Math.max(
           0,
-          frontUsagePercent - 90
+          frontUsagePercent -
+            90
         )
       : 0;
 
@@ -615,38 +863,23 @@ function getProjectedAxlePenalty({
     rearAxleMax > 0
       ? Math.max(
           0,
-          rearUsagePercent - 90
+          rearUsagePercent -
+            90
         )
       : 0;
 
-  /*
-    SOBRECARGA:
-    penalización extremadamente fuerte.
-  */
   const overloadPenalty =
     totalOverload *
     80_000;
 
-  /*
-    ZONA SEGURA:
-    este valor empuja directamente el
-    centro X hacia una posición legal.
-  */
   const safeZonePenalty =
     distanceOutsideSafeZone *
     25_000_000;
 
-  /*
-    Dentro de la zona legal seguimos
-    buscando margen.
-  */
   const targetPenalty =
     distanceToTarget *
     450_000;
 
-  /*
-    Prevención a partir del 90%.
-  */
   const highUsagePenalty =
     (
       frontHighUsage +
@@ -654,14 +887,27 @@ function getProjectedAxlePenalty({
     ) *
     20_000;
 
-  /*
-    Evitamos centros fuera de la distancia
-    física entre ambos ejes.
-  */
   const outsideWheelbasePenalty =
-    rawFrontLoad < 0 ||
-    rawRearLoad < 0
+    rawFrontCargoLoad < 0 ||
+    rawRearCargoLoad < 0
       ? 100_000_000
+      : 0;
+
+  const tareAlreadyOverloaded =
+    (
+      frontAxleMax > 0 &&
+      frontAxleTare >
+        frontAxleMax
+    ) ||
+    (
+      rearAxleMax > 0 &&
+      rearAxleTare >
+        rearAxleMax
+    );
+
+  const tareConfigurationPenalty =
+    tareAlreadyOverloaded
+      ? 250_000_000
       : 0;
 
   return {
@@ -670,10 +916,17 @@ function getProjectedAxlePenalty({
       safeZonePenalty +
       targetPenalty +
       highUsagePenalty +
-      outsideWheelbasePenalty,
+      outsideWheelbasePenalty +
+      tareConfigurationPenalty,
+
+    frontCargoLoad,
+    rearCargoLoad,
 
     frontLoad,
     rearLoad,
+
+    frontAxleTare,
+    rearAxleTare,
 
     frontOverload,
     rearOverload,
@@ -683,15 +936,17 @@ function getProjectedAxlePenalty({
     rearUsagePercent,
 
     safeZone,
+
     distanceOutsideSafeZone,
     distanceToTarget,
+
+    includesTare: true,
   };
 }
-
 /*
-  Mantiene las capas superiores repartidas
-  izquierda / derecha y favorece filas
-  continuas.
+  Mantiene las capas repartidas
+  izquierda / derecha y favorece
+  posiciones continuas.
 */
 function getLayerPlacementPenalty({
   candidate,
@@ -703,12 +958,19 @@ function getLayerPlacementPenalty({
     placedItems.filter(
       (item) =>
         Math.abs(
-          Number(item.z || 0) -
-            Number(candidate.z || 0)
+          Number(
+            item.z || 0
+          ) -
+            Number(
+              candidate.z || 0
+            )
         ) <= EPSILON
     );
 
-  if (sameLayerItems.length === 0) {
+  if (
+    sameLayerItems.length ===
+    0
+  ) {
     return 0;
   }
 
@@ -717,7 +979,8 @@ function getLayerPlacementPenalty({
       1,
       Math.abs(
         toNumber(
-          strategy.weights.balanceY,
+          strategy.weights
+            .balanceY,
           100000
         )
       )
@@ -730,20 +993,27 @@ function getLayerPlacementPenalty({
   let leftCount = 0;
   let rightCount = 0;
 
-  sameLayerItems.forEach((item) => {
-    const itemCenterY =
-      Number(item.y || 0) +
-      Number(item.width || 0) / 2;
+  sameLayerItems.forEach(
+    (item) => {
+      const itemCenterY =
+        Number(
+          item.y || 0
+        ) +
+        Number(
+          item.width || 0
+        ) /
+          2;
 
-    if (
-      itemCenterY <=
-      dimensions.width / 2
-    ) {
-      leftCount += 1;
-    } else {
-      rightCount += 1;
+      if (
+        itemCenterY <=
+        dimensions.width / 2
+      ) {
+        leftCount += 1;
+      } else {
+        rightCount += 1;
+      }
     }
-  });
+  );
 
   const candidateIsLeft =
     candidateCenterY <=
@@ -751,11 +1021,19 @@ function getLayerPlacementPenalty({
 
   const projectedLeft =
     leftCount +
-    (candidateIsLeft ? 1 : 0);
+    (
+      candidateIsLeft
+        ? 1
+        : 0
+    );
 
   const projectedRight =
     rightCount +
-    (candidateIsLeft ? 0 : 1);
+    (
+      candidateIsLeft
+        ? 0
+        : 1
+    );
 
   const projectedCount =
     projectedLeft +
@@ -766,98 +1044,138 @@ function getLayerPlacementPenalty({
       ? Math.abs(
           projectedLeft -
             projectedRight
-        ) / projectedCount
+        ) /
+        projectedCount
       : 0;
 
   const touchingSameLayer =
-    sameLayerItems.some((item) => {
-      const itemX =
-        Number(item.x || 0);
+    sameLayerItems.some(
+      (item) => {
+        const itemX =
+          Number(
+            item.x || 0
+          );
 
-      const itemY =
-        Number(item.y || 0);
+        const itemY =
+          Number(
+            item.y || 0
+          );
 
-      const itemLength =
-        Number(item.length || 0);
+        const itemLength =
+          Number(
+            item.length || 0
+          );
 
-      const itemWidth =
-        Number(item.width || 0);
+        const itemWidth =
+          Number(
+            item.width || 0
+          );
 
-      const touchesX =
-        (
-          Math.abs(
-            candidate.x -
-              (itemX + itemLength)
-          ) <= EPSILON ||
-          Math.abs(
-            candidate.x +
-              candidate.length -
-              itemX
-          ) <= EPSILON
-        ) &&
-        candidate.y <
-          itemY + itemWidth - EPSILON &&
-        candidate.y +
-          candidate.width >
-          itemY + EPSILON;
+        const touchesX =
+          (
+            Math.abs(
+              candidate.x -
+                (
+                  itemX +
+                  itemLength
+                )
+            ) <= EPSILON ||
 
-      const touchesY =
-        (
-          Math.abs(
-            candidate.y -
-              (itemY + itemWidth)
-          ) <= EPSILON ||
-          Math.abs(
-            candidate.y +
-              candidate.width -
-              itemY
-          ) <= EPSILON
-        ) &&
-        candidate.x <
-          itemX +
-            itemLength -
-            EPSILON &&
-        candidate.x +
-          candidate.length >
-          itemX + EPSILON;
+            Math.abs(
+              candidate.x +
+                candidate.length -
+                itemX
+            ) <= EPSILON
+          ) &&
+          candidate.y <
+            itemY +
+              itemWidth -
+              EPSILON &&
+          candidate.y +
+            candidate.width >
+            itemY +
+              EPSILON;
 
-      return touchesX || touchesY;
-    });
+        const touchesY =
+          (
+            Math.abs(
+              candidate.y -
+                (
+                  itemY +
+                  itemWidth
+                )
+            ) <= EPSILON ||
+
+            Math.abs(
+              candidate.y +
+                candidate.width -
+                itemY
+            ) <= EPSILON
+          ) &&
+          candidate.x <
+            itemX +
+              itemLength -
+              EPSILON &&
+          candidate.x +
+            candidate.length >
+            itemX +
+              EPSILON;
+
+        return (
+          touchesX ||
+          touchesY
+        );
+      }
+    );
 
   let nearestDistance =
     Number.POSITIVE_INFINITY;
 
-  sameLayerItems.forEach((item) => {
-    const itemCenterX =
-      Number(item.x || 0) +
-      Number(item.length || 0) / 2;
+  sameLayerItems.forEach(
+    (item) => {
+      const itemCenterX =
+        Number(
+          item.x || 0
+        ) +
+        Number(
+          item.length || 0
+        ) /
+          2;
 
-    const itemCenterY =
-      Number(item.y || 0) +
-      Number(item.width || 0) / 2;
+      const itemCenterY =
+        Number(
+          item.y || 0
+        ) +
+        Number(
+          item.width || 0
+        ) /
+          2;
 
-    const candidateCenterX =
-      candidate.x +
-      candidate.length / 2;
+      const candidateCenterX =
+        candidate.x +
+        candidate.length / 2;
 
-    const distance =
-      Math.hypot(
-        candidateCenterX -
-          itemCenterX,
+      const distance =
+        Math.hypot(
+          candidateCenterX -
+            itemCenterX,
 
-        candidateCenterY -
-          itemCenterY
-      );
+          candidateCenterY -
+            itemCenterY
+        );
 
-    nearestDistance =
-      Math.min(
-        nearestDistance,
-        distance
-      );
-  });
+      nearestDistance =
+        Math.min(
+          nearestDistance,
+          distance
+        );
+    }
+  );
 
   const normalizedDistance =
-    Number.isFinite(nearestDistance)
+    Number.isFinite(
+      nearestDistance
+    )
       ? nearestDistance /
         Math.max(
           dimensions.length,
@@ -888,29 +1206,186 @@ function getLayerPlacementPenalty({
   );
 }
 
+/*
+  Genera una grilla logística regular.
+*/
+function getRowPairPoints({
+  extremePoints,
+  orientation,
+  dimensions,
+}) {
+  const points = [];
+
+  const boxLength =
+    Number(
+      orientation.length || 0
+    );
+
+  const boxWidth =
+    Number(
+      orientation.width || 0
+    );
+
+  if (
+    boxLength <= 0 ||
+    boxWidth <= 0 ||
+    dimensions.length <= 0 ||
+    dimensions.width <= 0
+  ) {
+    return points;
+  }
+
+  const boxesPerRow =
+    Math.floor(
+      (
+        dimensions.width +
+        EPSILON
+      ) /
+      boxWidth
+    );
+
+  if (
+    boxesPerRow < 1
+  ) {
+    return points;
+  }
+
+  const occupiedWidth =
+    boxesPerRow *
+    boxWidth;
+
+  const startY =
+    Math.max(
+      0,
+      (
+        dimensions.width -
+        occupiedWidth
+      ) /
+        2
+    );
+
+  const rowsOnFloor =
+    Math.floor(
+      (
+        dimensions.length +
+        EPSILON
+      ) /
+      boxLength
+    );
+
+  for (
+    let row = 0;
+    row < rowsOnFloor;
+    row += 1
+  ) {
+    const x =
+      row *
+      boxLength;
+
+    for (
+      let column = 0;
+      column < boxesPerRow;
+      column += 1
+    ) {
+      const y =
+        startY +
+        column *
+          boxWidth;
+
+      points.push({
+        x,
+        y,
+        z: 0,
+
+        rowPair: true,
+        floorGrid: true,
+
+        rowColumn:
+          column,
+
+        rowColumns:
+          boxesPerRow,
+
+        rowIndex:
+          row,
+      });
+    }
+  }
+
+  extremePoints.forEach(
+    (point) => {
+      const x =
+        Number(
+          point.x || 0
+        );
+
+      const z =
+        Number(
+          point.z || 0
+        );
+
+      for (
+        let column = 0;
+        column < boxesPerRow;
+        column += 1
+      ) {
+        const y =
+          startY +
+          column *
+            boxWidth;
+
+        points.push({
+          x,
+          y,
+          z,
+
+          rowPair: true,
+
+          floorGrid:
+            z <= EPSILON,
+
+          rowColumn:
+            column,
+
+          rowColumns:
+            boxesPerRow,
+        });
+      }
+    }
+  );
+
+  return points;
+}
+
 function runStrategy(
   capacity,
   selectedItems,
   strategy
 ) {
   const dimensions = {
-    length: toNumber(
-      capacity?.internal_length_m
-    ),
+    length:
+      toNumber(
+        capacity?.internal_length_m
+      ),
 
-    width: toNumber(
-      capacity?.internal_width_m
-    ),
+    width:
+      toNumber(
+        capacity?.internal_width_m
+      ),
 
-    height: toNumber(
-      capacity?.internal_height_m
-    ),
+    height:
+      toNumber(
+        capacity?.internal_height_m
+      ),
   };
 
-  const units = sortUnits(
-    buildUnits(selectedItems),
-    strategy
-  );
+  const units =
+    sortUnits(
+      buildUnits(
+        selectedItems
+      ),
+      strategy
+    );
 
   if (
     dimensions.length <= 0 ||
@@ -920,33 +1395,335 @@ function runStrategy(
     return {
       placed: [],
 
-      rejected: units.map(
-        (unit) => ({
-          product: unit.product,
-          unit: unit.unit,
-          reason:
-            "La unidad no tiene dimensiones internas válidas",
-        })
-      ),
+      rejected:
+        units.map(
+          (unit) => ({
+            product:
+              unit.product,
+
+            unit:
+              unit.unit,
+
+            reason:
+              "La unidad no tiene dimensiones internas válidas",
+          })
+        ),
     };
   }
 
   const placed = [];
   const rejected = [];
 
-  let extremePoints =
-    createInitialExtremePoints();
-
   const maximumWeight =
-    getMaximumWeight(capacity);
+    getMaximumWeight(
+      capacity
+    );
 
   let usedWeight = 0;
+
+  /*
+    Centro geométrico de la unidad.
+  */
+  const centerX =
+    dimensions.length / 2;
+
+  const centerY =
+    dimensions.width / 2;
+      function buildFloorPositions(
+    orientation
+  ) {
+    const positions = [];
+
+    const boxLength =
+      Number(
+        orientation.length || 0
+      );
+
+    const boxWidth =
+      Number(
+        orientation.width || 0
+      );
+
+    if (
+      boxLength <= 0 ||
+      boxWidth <= 0
+    ) {
+      return positions;
+    }
+
+    const rows =
+      Math.floor(
+        (
+          dimensions.length +
+          EPSILON
+        ) /
+        boxLength
+      );
+
+    const columns =
+      Math.floor(
+        (
+          dimensions.width +
+          EPSILON
+        ) /
+        boxWidth
+      );
+
+    if (
+      rows <= 0 ||
+      columns <= 0
+    ) {
+      return positions;
+    }
+
+    const occupiedWidth =
+      columns *
+      boxWidth;
+
+    const startY =
+      Math.max(
+        0,
+        (
+          dimensions.width -
+          occupiedWidth
+        ) / 2
+      );
+
+    /*
+      Grilla regular de posiciones
+      sobre el piso.
+    */
+    for (
+      let row = 0;
+      row < rows;
+      row += 1
+    ) {
+      for (
+        let column = 0;
+        column < columns;
+        column += 1
+      ) {
+        positions.push({
+          x:
+            row *
+            boxLength,
+
+          y:
+            startY +
+            column *
+            boxWidth,
+
+          z: 0,
+        });
+      }
+    }
+
+    /*
+      Posición centrada longitudinalmente.
+
+      Importante:
+      boxLength ya está declarado antes,
+      así evitamos el error que tenía
+      el archivo anterior.
+    */
+    const centeredX =
+      Math.max(
+        0,
+        Math.min(
+          dimensions.length -
+            boxLength,
+
+          centerX -
+            boxLength / 2
+        )
+      );
+
+    /*
+      Agregamos alternativas centradas
+      usando exactamente las mismas
+      columnas válidas de la grilla.
+    */
+    for (
+      let column = 0;
+      column < columns;
+      column += 1
+    ) {
+      positions.push({
+        x:
+          centeredX,
+
+        y:
+          startY +
+          column *
+          boxWidth,
+
+        z: 0,
+      });
+    }
+
+    /*
+      Puntos exactos pegados a las cargas
+      ya colocadas.
+
+      Esto es importante cuando mezclamos
+      productos con medidas diferentes.
+    */
+    placed.forEach(
+      (item) => {
+        const itemX =
+          Number(
+            item.x || 0
+          );
+
+        const itemY =
+          Number(
+            item.y || 0
+          );
+
+        const itemLength =
+          Number(
+            item.length || 0
+          );
+
+        const itemWidth =
+          Number(
+            item.width || 0
+          );
+
+        /*
+          Después del elemento.
+        */
+        positions.push({
+          x:
+            itemX +
+            itemLength,
+
+          y:
+            itemY,
+
+          z: 0,
+        });
+
+        /*
+          Antes del elemento.
+        */
+        positions.push({
+          x:
+            itemX -
+            boxLength,
+
+          y:
+            itemY,
+
+          z: 0,
+        });
+
+        /*
+          A un costado.
+        */
+        positions.push({
+          x:
+            itemX,
+
+          y:
+            itemY +
+            itemWidth,
+
+          z: 0,
+        });
+
+        /*
+          Al otro costado.
+        */
+        positions.push({
+          x:
+            itemX,
+
+          y:
+            itemY -
+            boxWidth,
+
+          z: 0,
+        });
+      }
+    );
+
+    /*
+      Eliminamos coordenadas repetidas.
+    */
+    const uniquePositions =
+      new Map();
+
+    positions.forEach(
+      (position) => {
+        const key =
+          [
+            Number(
+              position.x
+            ).toFixed(4),
+
+            Number(
+              position.y
+            ).toFixed(4),
+
+            Number(
+              position.z
+            ).toFixed(4),
+          ].join("|");
+
+        if (
+          !uniquePositions.has(
+            key
+          )
+        ) {
+          uniquePositions.set(
+            key,
+            position
+          );
+        }
+      }
+    );
+
+    return [
+      ...uniquePositions.values(),
+    ];
+  }
+
+  function buildStackPositions() {
+    const positions = [];
+
+    placed.forEach(
+      (item) => {
+        if (
+          item.product
+            ?.stackable === false
+        ) {
+          return;
+        }
+
+        positions.push({
+          x:
+            item.x,
+
+          y:
+            item.y,
+
+          z:
+            item.z +
+            item.height,
+        });
+      }
+    );
+
+    return positions;
+  }
 
   units.forEach(
     (unit, itemIndex) => {
       const productWeight =
         toNumber(
-          unit.product?.weight_kg
+          unit.product
+            ?.weight_kg
         );
 
       if (
@@ -956,8 +1733,12 @@ function runStrategy(
           maximumWeight
       ) {
         rejected.push({
-          product: unit.product,
-          unit: unit.unit,
+          product:
+            unit.product,
+
+          unit:
+            unit.unit,
+
           reason:
             "Supera el peso máximo permitido",
         });
@@ -965,19 +1746,90 @@ function runStrategy(
         return;
       }
 
-      const candidates = [];
+      const floorCandidates = [];
+      const upperCandidates = [];
 
-      extremePoints.forEach(
-        (point) => {
-          getOrientations(
-            unit.product,
-            strategy
-          ).forEach(
-            (orientation) => {
+      const orientations =
+        getOrientations(
+          unit.product,
+          strategy
+        );
+
+      orientations.forEach(
+        (orientation) => {
+          const floorPositions =
+            buildFloorPositions(
+              orientation
+            );
+
+          floorPositions.forEach(
+            (point) => {
               const candidate = {
-                x: point.x,
-                y: point.y,
-                z: point.z,
+                x:
+                  point.x,
+
+                y:
+                  point.y,
+
+                z: 0,
+
+                length:
+                  orientation.length,
+
+                width:
+                  orientation.width,
+
+                height:
+                  orientation.height,
+
+                rotated:
+                  orientation.rotated,
+
+                rotationY:
+                  orientation.rotationY,
+              };
+
+              if (
+                !isInsideContainer(
+                  candidate,
+                  dimensions
+                )
+              ) {
+                return;
+              }
+
+              if (
+                placed.some(
+                  (item) =>
+                    boxesOverlap(
+                      candidate,
+                      item
+                    )
+                )
+              ) {
+                return;
+              }
+
+              floorCandidates.push(
+                candidate
+              );
+            }
+          );
+
+          const stackPositions =
+            buildStackPositions();
+
+          stackPositions.forEach(
+            (point) => {
+              const candidate = {
+                x:
+                  point.x,
+
+                y:
+                  point.y,
+
+                z:
+                  point.z,
 
                 length:
                   orientation.length,
@@ -1023,214 +1875,634 @@ function runStrategy(
                 );
 
               if (
-                support + EPSILON <
+                support +
+                  EPSILON <
                 0.8
               ) {
                 return;
               }
 
-              const centerX =
-                candidate.x +
-                candidate.length / 2;
-
-              const centerY =
-                candidate.y +
-                candidate.width / 2;
-
-              const distanceX =
-                Math.abs(
-                  centerX -
-                    dimensions.length / 2
-                ) /
-                Math.max(
-                  dimensions.length,
-                  EPSILON
-                );
-
-              const distanceY =
-                Math.abs(
-                  centerY -
-                    dimensions.width / 2
-                ) /
-                Math.max(
-                  dimensions.width,
-                  EPSILON
-                );
-
-              const projectedBalance =
-                getProjectedBalance({
-                  placedItems:
-                    placed,
-
-                  candidate,
-
-                  candidateWeight:
-                    productWeight,
-
-                  dimensions,
-                });
-
-              const projectedAxles =
-                getProjectedAxlePenalty({
-                  capacity,
-                  projectedBalance,
-                });
-
-              const stackingBonus =
-                strategy.preferStacking &&
-                candidate.z > EPSILON
-                  ? toNumber(
-                      strategy.weights
-                        .stackingBonus,
-                      320000
-                    )
-                  : 0;
-
-              /*
-                Conservamos el balance general,
-                pero la seguridad de ejes pasa
-                a ser una prioridad muy fuerte.
-              */
-              const globalLongitudinalPenalty =
-                projectedBalance
-                  .longitudinalOffset *
-                toNumber(
-                  strategy.weights
-                    .balanceX,
-                  1
-                ) *
-                2;
-
-              const globalLateralPenalty =
-                projectedBalance
-                  .lateralOffset *
-                toNumber(
-                  strategy.weights
-                    .balanceY,
-                  1
-                ) *
-                8;
-
-              const sideDistributionPenalty =
-                projectedBalance
-                  .lateralDistributionDifference *
-                toNumber(
-                  strategy.weights
-                    .balanceY,
-                  1
-                ) *
-                10;
-
-              const layerPlacementPenalty =
-                getLayerPlacementPenalty({
-                  candidate,
-
-                  placedItems:
-                    placed,
-
-                  dimensions,
-
-                  strategy,
-                });
-
-              const centeredLateralPenalty =
-                Math.abs(
-                  centerY -
-                    dimensions.width / 2
-                ) *
-                toNumber(
-                  strategy.weights
-                    .lateral
-                );
-
-              /*
-                IMPORTANTE:
-
-                El antiguo candidate.x puro
-                favorecía sistemáticamente
-                cargar desde el frente.
-
-                Ahora reducimos muchísimo esa
-                preferencia cuando existen ejes
-                configurados.
-              */
-              const hasAxleConfiguration =
-                Boolean(
-                  projectedAxles.safeZone
-                );
-
-              const depthPenalty =
-                candidate.x *
-                toNumber(
-                  strategy.weights.depth
-                ) *
-                (
-                  hasAxleConfiguration
-                    ? 0.08
-                    : 1
-                );
-
-              const score =
-                candidate.z *
-                  toNumber(
-                    strategy.weights.height
-                  ) +
-
-                centeredLateralPenalty +
-
-                depthPenalty +
-
-                (1 - support) *
-                  toNumber(
-                    strategy.weights.support
-                  ) +
-
-                distanceX *
-                  toNumber(
-                    strategy.weights.balanceX
-                  ) +
-
-                distanceY *
-                  toNumber(
-                    strategy.weights.balanceY
-                  ) +
-
-                globalLongitudinalPenalty +
-
-                globalLateralPenalty +
-
-                sideDistributionPenalty +
-
-                layerPlacementPenalty +
-
-                /*
-                  NUEVA PRIORIDAD:
-                  corrección longitudinal
-                  dirigida por los ejes.
-                */
-                projectedAxles.penalty -
-
-                stackingBonus;
-
-              candidates.push({
-                candidate,
-                score,
-                projectedAxles,
-              });
+              upperCandidates.push(
+                candidate
+              );
             }
           );
         }
       );
+            function getFloorCandidatePriority(
+        candidate
+      ) {
+        const remainingSameProduct =
+          units
+            .slice(itemIndex)
+            .filter(
+              (currentUnit) =>
+                currentUnit
+                  ?.product
+                  ?.id ===
+                unit.product?.id
+            ).length;
 
-      candidates.sort(
-        (first, second) =>
-          first.score -
-          second.score
+        const boxesAcross =
+          Math.max(
+            1,
+            Math.floor(
+              (
+                dimensions.width +
+                EPSILON
+              ) /
+              candidate.width
+            )
+          );
+
+        const rowsNeeded =
+          Math.ceil(
+            remainingSameProduct /
+            boxesAcross
+          );
+
+        const batchLength =
+          rowsNeeded *
+          candidate.length;
+
+        const unitsInRow =
+          Math.min(
+            remainingSameProduct,
+            boxesAcross
+          );
+
+        const usedRowWidth =
+          unitsInRow *
+          candidate.width;
+
+        const widthWaste =
+          Math.max(
+            0,
+            dimensions.width -
+              usedRowWidth
+          );
+
+        const rowFillRatio =
+          dimensions.width > 0
+            ? usedRowWidth /
+              dimensions.width
+            : 0;
+
+        const canPlaceMultipleAcross =
+          remainingSameProduct > 1 &&
+          boxesAcross > 1;
+
+        /*
+          Detecta si esta posición queda
+          exactamente al costado de otra
+          unidad del mismo producto.
+        */
+        const formsSidePair =
+          placed.some(
+            (item) => {
+              if (
+                item?.product?.id !==
+                unit.product?.id
+              ) {
+                return false;
+              }
+
+              const sameLevel =
+                Math.abs(
+                  Number(
+                    item.z || 0
+                  ) -
+                  Number(
+                    candidate.z || 0
+                  )
+                ) <= EPSILON;
+
+              const overlapsX =
+                candidate.x <
+                  item.x +
+                    item.length -
+                    EPSILON &&
+                candidate.x +
+                  candidate.length >
+                  item.x +
+                    EPSILON;
+
+              const touchesSide =
+                Math.abs(
+                  candidate.y -
+                    (
+                      item.y +
+                      item.width
+                    )
+                ) <= EPSILON ||
+                Math.abs(
+                  candidate.y +
+                    candidate.width -
+                    item.y
+                ) <= EPSILON;
+
+              return (
+                sameLevel &&
+                overlapsX &&
+                touchesSide
+              );
+            }
+          );
+
+        /*
+          Calculamos cómo quedaría
+          el centro de gravedad si
+          colocáramos esta unidad.
+        */
+        const projectedBalance =
+          getProjectedBalance({
+            placedItems:
+              placed,
+
+            candidate,
+
+            candidateWeight:
+              productWeight,
+
+            dimensions,
+          });
+/*
+  Penalización fuerte de balance.
+
+  Cuanto más se aleje el centro
+  de gravedad proyectado del
+  centro de la unidad, mayor
+  será el costo de esta posición.
+*/
+const longitudinalBalancePenalty =
+  projectedBalance.longitudinalOffset *
+  1_000_000;
+
+const lateralBalancePenalty =
+  projectedBalance.lateralOffset *
+  1_000_000;
+
+const sideDistributionPenalty =
+  projectedBalance
+    .lateralDistributionDifference *
+  500_000;
+
+const totalBalancePenalty =
+  longitudinalBalancePenalty +
+  lateralBalancePenalty +
+  sideDistributionPenalty;
+
+        const axleProjection =
+          getProjectedAxlePenalty({
+            capacity,
+            projectedBalance,
+          });
+          const layerPenalty =
+  getLayerPlacementPenalty({
+    candidate,
+    placedItems:
+      placed,
+    dimensions,
+    strategy,
+  });
+
+        const longitudinalDistance =
+          Math.abs(
+            candidate.x +
+              candidate.length / 2 -
+              centerX
+          );
+
+        const lateralDistance =
+          Math.abs(
+            candidate.y +
+              candidate.width / 2 -
+              centerY
+          );
+
+        return {
+          formsSidePair,
+          layerPenalty,
+totalBalancePenalty,
+          batchLength,
+          widthWaste,
+          rowFillRatio,
+          boxesAcross,
+          canPlaceMultipleAcross,
+
+          projectedBalance,
+
+          axlePenalty:
+            axleProjection.penalty,
+
+          axleOverload:
+            axleProjection.totalOverload,
+
+          longitudinalDistance,
+          lateralDistance,
+        };
+      }
+
+      floorCandidates.sort(
+        (
+          first,
+          second
+        ) => {
+          const firstPriority =
+            getFloorCandidatePriority(
+              first
+            );
+
+          const secondPriority =
+            getFloorCandidatePriority(
+              second
+            );
+/*
+  PRIMER BULTO:
+  la pieza principal debe comenzar
+  contra el frente de la unidad.
+
+  No usamos nombres de productos.
+  Simplemente se aplica al primer
+  elemento ordenado por tamaño/peso.
+*/
+if (
+  placed.length === 0
+) {
+  const firstFrontDistance =
+    Math.abs(
+      Number(first.x || 0)
+    );
+    const firstBalanceDiff =
+  Math.abs(
+    50 -
+    Number(
+      first.balance?.frontPercentage || 50
+    )
+  );
+
+const secondBalanceDiff =
+  Math.abs(
+    50 -
+    Number(
+      second.balance?.frontPercentage || 50
+    )
+  );
+
+if (
+  Math.abs(
+    firstBalanceDiff -
+    secondBalanceDiff
+  ) > 5
+) {
+  return (
+    firstBalanceDiff -
+    secondBalanceDiff
+  );
+}
+
+  const secondFrontDistance =
+    Math.abs(
+      Number(second.x || 0)
+    );
+
+  if (
+    Math.abs(
+      firstFrontDistance -
+      secondFrontDistance
+    ) > EPSILON
+  ) {
+    return (
+      firstFrontDistance -
+      secondFrontDistance
+    );
+  }
+
+  /*
+    Si ambos están contra el frente,
+    elegimos el que quede mejor
+    centrado lateralmente.
+  */
+  const firstCenterY =
+    Number(first.y || 0) +
+    Number(first.width || 0) / 2;
+
+  const secondCenterY =
+    Number(second.y || 0) +
+    Number(second.width || 0) / 2;
+
+  return (
+    Math.abs(
+      firstCenterY -
+      centerY
+    ) -
+    Math.abs(
+      secondCenterY -
+      centerY
+    )
+  );
+}
+          /*
+            1. Evitamos sobrecargas
+            de ejes.
+          */
+          if (
+            Math.abs(
+              firstPriority.axleOverload -
+              secondPriority.axleOverload
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority.axleOverload -
+              secondPriority.axleOverload
+            );
+          }
+/*
+  Priorizamos posiciones compactas
+  y continuas dentro de la misma capa.
+*/
+if (
+  Math.abs(
+    firstPriority.layerPenalty -
+    secondPriority.layerPenalty
+  ) > EPSILON
+) {
+  return (
+    firstPriority.layerPenalty -
+    secondPriority.layerPenalty
+  );
+}
+          /*
+            2. Mantener juntas las
+            unidades iguales.
+          */
+          if (
+            firstPriority.formsSidePair !==
+            secondPriority.formsSidePair
+          ) {
+            return firstPriority.formsSidePair
+              ? -1
+              : 1;
+          }
+
+          /*
+            3. Menor largo necesario
+            para el lote.
+          */
+          if (
+            Math.abs(
+              firstPriority.batchLength -
+              secondPriority.batchLength
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority.batchLength -
+              secondPriority.batchLength
+            );
+          }
+
+          /*
+            4. Si es posible colocar
+            varias unidades lado a lado,
+            priorizamos esa orientación.
+          */
+          if (
+            firstPriority
+              .canPlaceMultipleAcross !==
+            secondPriority
+              .canPlaceMultipleAcross
+          ) {
+            return firstPriority
+              .canPlaceMultipleAcross
+              ? -1
+              : 1;
+          }
+
+          /*
+            5. Mejor aprovechamiento
+            del ancho.
+          */
+          if (
+            Math.abs(
+              firstPriority.rowFillRatio -
+              secondPriority.rowFillRatio
+            ) > EPSILON
+          ) {
+            return (
+              secondPriority.rowFillRatio -
+              firstPriority.rowFillRatio
+            );
+          }
+
+          if (
+            Math.abs(
+              firstPriority.widthWaste -
+              secondPriority.widthWaste
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority.widthWaste -
+              secondPriority.widthWaste
+            );
+          }
+
+          /*
+            6. Mejor balance
+            longitudinal proyectado.
+          */
+          if (
+            Math.abs(
+              firstPriority
+                .projectedBalance
+                .longitudinalOffset -
+              secondPriority
+                .projectedBalance
+                .longitudinalOffset
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority
+                .projectedBalance
+                .longitudinalOffset -
+              secondPriority
+                .projectedBalance
+                .longitudinalOffset
+            );
+          }
+
+          /*
+            7. Mejor reparto
+            izquierda / derecha.
+          */
+          if (
+            Math.abs(
+              firstPriority
+                .projectedBalance
+                .lateralDistributionDifference -
+              secondPriority
+                .projectedBalance
+                .lateralDistributionDifference
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority
+                .projectedBalance
+                .lateralDistributionDifference -
+              secondPriority
+                .projectedBalance
+                .lateralDistributionDifference
+            );
+          }
+
+          if (
+            Math.abs(
+              firstPriority
+                .projectedBalance
+                .lateralOffset -
+              secondPriority
+                .projectedBalance
+                .lateralOffset
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority
+                .projectedBalance
+                .lateralOffset -
+              secondPriority
+                .projectedBalance
+                .lateralOffset
+            );
+          }
+
+          /*
+            8. Penalización general
+            de ejes.
+          */
+          if (
+            Math.abs(
+              firstPriority.axlePenalty -
+              secondPriority.axlePenalty
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority.axlePenalty -
+              secondPriority.axlePenalty
+            );
+          }
+
+          /*
+            9. Cercanía geométrica
+            al centro.
+          */
+          if (
+            Math.abs(
+              firstPriority.longitudinalDistance -
+              secondPriority.longitudinalDistance
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority.longitudinalDistance -
+              secondPriority.longitudinalDistance
+            );
+          }
+
+          if (
+            Math.abs(
+              firstPriority.lateralDistance -
+              secondPriority.lateralDistance
+            ) > EPSILON
+          ) {
+            return (
+              firstPriority.lateralDistance -
+              secondPriority.lateralDistance
+            );
+          }
+
+          return (
+            first.x -
+              second.x ||
+            first.y -
+              second.y ||
+            Number(
+              first.rotationY || 0
+            ) -
+              Number(
+                second.rotationY || 0
+              )
+          );
+        }
+      );
+            upperCandidates.sort(
+        (
+          first,
+          second
+        ) =>
+          first.z -
+            second.z ||
+          first.x -
+            second.x ||
+          first.y -
+            second.y
       );
 
-      const selected =
-        candidates[0];
+      const bestFloor =
+  floorCandidates[0];
 
+const bestUpper =
+  upperCandidates[0];
+
+let selected =
+  bestFloor ||
+  bestUpper;
+
+/*
+  APILADO COMPACTO AUTOMÁTICO
+
+  Primero completamos una fila
+  transversal del mismo producto.
+
+  Cuando esa fila está completa,
+  si existe una posición válida
+  arriba, comenzamos la siguiente
+  capa en lugar de extender la
+  carga longitudinalmente.
+*/
+if (
+  bestFloor &&
+  bestUpper &&
+  unit.product?.stackable !== false
+) {
+  const boxesAcross =
+    Math.max(
+      1,
+      Math.floor(
+        (
+          dimensions.width +
+          EPSILON
+        ) /
+        bestFloor.width
+      )
+    );
+
+  const sameProductFloorItems =
+    placed.filter(
+      (item) =>
+        item?.product?.id ===
+          unit.product?.id &&
+        Number(
+          item.z || 0
+        ) <= EPSILON
+    );
+
+  const firstRowComplete =
+    sameProductFloorItems.length >=
+    boxesAcross;
+
+  if (firstRowComplete) {
+    selected =
+      bestUpper;
+  }
+}
       if (!selected) {
         rejected.push({
           product:
@@ -1240,7 +2512,7 @@ function runStrategy(
             unit.unit,
 
           reason:
-            "No se encontró una posición extrema compatible",
+            "No se encontró una posición válida",
         });
 
         return;
@@ -1259,11 +2531,11 @@ function runStrategy(
         unit:
           unit.unit,
 
-        ...selected.candidate,
+        ...selected,
 
         orientation:
-          selected.candidate
-            .rotationY === 90
+          selected.rotationY ===
+          90
             ? "ROTATED_90"
             : "VERTICAL",
 
@@ -1272,35 +2544,1118 @@ function runStrategy(
             unit.product
           ),
 
-        locked: false,
+        locked:
+          false,
       };
 
-      placed.push(placedItem);
+      placed.push(
+        placedItem
+      );
 
       usedWeight +=
         productWeight;
-
-      extremePoints =
-        updateExtremePoints({
-          currentPoints:
-            extremePoints,
-
-          placedItem,
-
-          placedItems:
-            placed,
-
-          dimensions,
-        });
     }
   );
+  
+  return {
+    placed,
+    rejected,
+  };
+  /*
+  Recentramos TODO el bloque compacto
+  sin cambiar la distribución interna.
+
+  Así mejoramos el balance longitudinal
+  sin separar tolva, cintas y cajas.
+*/
+console.log(
+  "ANTES DE RECENTER",
+  {
+    placedCount:
+      placed.length,
+
+    containerLength:
+      dimensions.length,
+  }
+);
+if (
+  placed.length > 0 &&
+  dimensions.length > 0
+) {
+  const minX =
+    Math.min(
+      ...placed.map(
+        (item) => item.x
+      )
+    );
+
+  const maxX =
+    Math.max(
+      ...placed.map(
+        (item) =>
+          item.x +
+          item.length
+      )
+    );
+
+  const blockLength =
+    maxX - minX;
+
+  const availableSpace =
+    Math.max(
+      0,
+      dimensions.length -
+      blockLength
+    );
+
+  const targetStartX =
+    availableSpace / 2;
+
+  const shiftX =
+    targetStartX -
+    minX;
+
+  placed.forEach(
+    (item) => {
+      item.x += shiftX;
+    }
+  );
+  console.log(
+  "GROUPED RECENTER",
+  {
+    minX,
+    maxX,
+    blockLength,
+    availableSpace,
+    targetStartX,
+    shiftX,
+    finalCenterX:
+      targetStartX +
+      blockLength / 2,
+  }
+);
+}
+}
+
+/*
+  =====================================================
+  PLANIFICADOR COMPACTO POR GRUPOS
+  =====================================================
+
+  Objetivo:
+
+  1. Agrupar unidades iguales.
+  2. Ordenar grupos por tamaño.
+  3. Colocar el grupo dominante contra el frente.
+  4. Completar cada fila transversalmente.
+  5. Apilar automáticamente cuando corresponde.
+  6. Continuar el siguiente grupo inmediatamente detrás.
+*/
+function runGroupedCompactStrategy(
+  capacity,
+  selectedItems,
+  strategy
+) {
+  
+  const dimensions = {
+    length:
+      toNumber(
+        capacity?.internal_length_m
+      ),
+
+    width:
+      toNumber(
+        capacity?.internal_width_m
+      ),
+
+    height:
+      toNumber(
+        capacity?.internal_height_m
+      ),
+  };
+
+  if (
+    dimensions.length <= 0 ||
+    dimensions.width <= 0 ||
+    dimensions.height <= 0
+  ) {
+    return {
+      placed: [],
+      rejected: [],
+    };
+  }
+
+  const maximumWeight =
+    getMaximumWeight(
+      capacity
+    );
+
+  let usedWeight = 0;
+
+  const placed = [];
+  const rejected = [];
+
+  /*
+    Convertimos los productos seleccionados
+    en grupos completos.
+  */
+  const groups =
+    selectedItems
+      .map(
+        (selectedItem) => ({
+          product:
+            selectedItem.product,
+
+          quantity:
+            Math.max(
+              0,
+              Math.floor(
+                toNumber(
+                  selectedItem.quantity
+                )
+              )
+            ),
+        })
+      )
+      .filter(
+        (group) =>
+          group.product &&
+          group.quantity > 0
+      );
+
+  /*
+    El producto físicamente dominante
+    va primero.
+
+    No usamos nombres como:
+    tolva / cinta / caja.
+  */
+  groups.sort(
+  (first, second) => {
+    const firstLength =
+      Math.max(
+        toNumber(
+          first.product?.length_m
+        ),
+        toNumber(
+          first.product?.width_m
+        )
+      );
+
+    const secondLength =
+      Math.max(
+        toNumber(
+          second.product?.length_m
+        ),
+        toNumber(
+          second.product?.width_m
+        )
+      );
+
+    const firstFootprint =
+      toNumber(
+        first.product?.length_m
+      ) *
+      toNumber(
+        first.product?.width_m
+      );
+
+    const secondFootprint =
+      toNumber(
+        second.product?.length_m
+      ) *
+      toNumber(
+        second.product?.width_m
+      );
+
+    const firstVolume =
+      getProductVolume(
+        first.product
+      );
+
+    const secondVolume =
+      getProductVolume(
+        second.product
+      );
+
+    /*
+      Primero van las piezas físicamente
+      más largas.
+
+      Esto mantiene delante elementos
+      como tolvas y cintas, dejando las
+      cajas pequeñas para después.
+    */
+    return (
+  secondLength -
+    firstLength ||
+
+  secondFootprint -
+    firstFootprint ||
+
+  secondTotalWeight -
+    firstTotalWeight ||
+
+  secondVolume -
+    firstVolume
+);
+  }
+);
+
+  /*
+    cursorX marca dónde comienza
+    el siguiente grupo.
+  */
+  let cursorX = 0;
+  /*
+  Guardaremos el inicio del bloque compacto.
+  Más adelante podremos desplazar TODO el bloque
+  para mejorar el balance sin separar productos.
+*/
+const compactBlockStartX =
+  cursorX;  
+  /*
+    Recorremos cada grupo completo.
+    Para cada producto elegiremos
+    la orientación que permita formar
+    el bloque más compacto.
+  */
+  groups.forEach(
+    (group, groupIndex) => {
+      const product =
+        group.product;
+        /*
+  Peso individual del producto.
+  Lo usaremos para evaluar la
+  seguridad del apilado.
+*/
+const unitWeight =
+  Math.max(
+    0,
+    toNumber(
+      product?.weight_kg
+    )
+  );
+              /*
+        APILADO AUTOMÁTICO
+
+        Si el producto permite apilado,
+        calcularemos después cuántos niveles
+        pueden utilizarse sin superar
+        la altura disponible.
+      */
+      const canStack =
+        product?.stackable !== false;
+
+      const productHeight =
+        toNumber(
+          product?.height_m
+        );
+
+      const maximumStackLevels =
+        canStack &&
+        productHeight > 0
+          ? Math.max(
+              1,
+              Math.floor(
+                (
+                  dimensions.height +
+                  EPSILON
+                ) /
+                productHeight
+              )
+            )
+          : 1;
+      const orientations =
+        getOrientations(
+          product,
+          strategy
+        );
+
+      if (
+        orientations.length === 0
+      ) {
+        for (
+          let unit = 1;
+          unit <= group.quantity;
+          unit += 1
+        ) {
+          rejected.push({
+            product,
+            unit,
+            reason:
+              "El producto no tiene dimensiones válidas",
+          });
+        }
+
+        return;
+      }
+
+      /*
+        Buscamos la orientación que
+        necesite menos largo de carga.
+
+        Así, por ejemplo, dos piezas
+        que entren lado a lado tenderán
+        a colocarse transversalmente.
+      */
+      const orientationOptions =
+        orientations.map(
+          (orientation) => {
+            const across =
+  Math.max(
+    1,
+    Math.floor(
+      (
+        dimensions.width +
+        EPSILON
+      ) /
+      orientation.width
+    )
+  );
+
+/*
+  Cantidad de niveles posibles
+  para este producto.
+*/
+const orientationStackLevels =
+  canStack &&
+  orientation.height > 0
+    ? Math.max(
+        1,
+        Math.floor(
+          (
+            dimensions.height +
+            EPSILON
+          ) /
+          orientation.height
+        )
+      )
+    : 1;
+
+/*
+  Si el producto tiene definido un
+  peso máximo soportado para apilado,
+  lo respetamos.
+
+  Si todavía no tiene ese dato,
+  no inventamos un límite.
+*/
+const maximumStackWeight =
+  toNumber(
+    product?.max_stack_weight_kg
+  );
+
+const weightLimitedLevels =
+  maximumStackWeight > 0 &&
+  unitWeight > 0
+    ? Math.max(
+        1,
+        Math.floor(
+          maximumStackWeight /
+          unitWeight
+        ) + 1
+      )
+    : orientationStackLevels;
+
+const levels =
+  Math.max(
+    1,
+    Math.min(
+      orientationStackLevels,
+      weightLimitedLevels,
+      group.quantity
+    )
+  );
+
+/*
+  Repartimos las unidades entre
+  los niveles disponibles.
+
+  Ejemplo:
+  6 cajas, 3 por fila, 2 niveles
+  => 3 abajo + 3 arriba.
+*/
+const unitsPerLevel =
+  Math.min(
+    across,
+    Math.ceil(
+      group.quantity /
+      levels
+    )
+  );
+
+const rows =
+  Math.ceil(
+    group.quantity /
+    (
+      unitsPerLevel *
+      levels
+    )
+  );
+
+const requiredLength =
+  rows *
+  orientation.length;
+
+const usedHeight =
+  levels *
+  orientation.height;
+
+            return {
+  orientation,
+  across,
+  rows,
+  levels,
+  unitsPerLevel,
+  requiredLength,
+  usedHeight,
+};
+          }
+        )
+        .filter(
+          (option) =>
+            option.orientation.length <=
+              dimensions.length +
+                EPSILON &&
+            option.orientation.width <=
+              dimensions.width +
+                EPSILON &&
+            option.orientation.height <=
+              dimensions.height +
+                EPSILON
+        );
+
+      if (
+        orientationOptions.length === 0
+      ) {
+        for (
+          let unit = 1;
+          unit <= group.quantity;
+          unit += 1
+        ) {
+          rejected.push({
+            product,
+            unit,
+            reason:
+              "El producto no entra en la unidad",
+          });
+        }
+
+        return;
+      }
+
+      orientationOptions.sort(
+  (first, second) => {
+    const firstAcross =
+      Math.min(
+        first.across,
+        group.quantity
+      );
+
+    const secondAcross =
+      Math.min(
+        second.across,
+        group.quantity
+      );
+
+    const firstRows =
+      Math.ceil(
+        group.quantity /
+        firstAcross
+      );
+
+    const secondRows =
+      Math.ceil(
+        group.quantity /
+        secondAcross
+      );
+
+    const firstLengthUsed =
+      firstRows *
+      first.orientation.length;
+
+    const secondLengthUsed =
+      secondRows *
+      second.orientation.length;
+
+    const firstWidthUsed =
+      firstAcross *
+      first.orientation.width;
+
+    const secondWidthUsed =
+      secondAcross *
+      second.orientation.width;
+
+    /*
+      1. Primero buscamos la orientación
+      que ocupe MENOS LARGO total.
+      
+      Para dos cintas largas, esto debe
+      favorecer girarlas y ponerlas
+      transversalmente si físicamente entran.
+    */
+    if (
+      Math.abs(
+        firstLengthUsed -
+        secondLengthUsed
+      ) > EPSILON
+    ) {
+      return (
+        firstLengthUsed -
+        secondLengthUsed
+      );
+    }
+
+    /*
+      2. Si ocupan el mismo largo,
+      preferimos aprovechar más el ancho.
+    */
+    if (
+      Math.abs(
+        firstWidthUsed -
+        secondWidthUsed
+      ) > EPSILON
+    ) {
+      return (
+        secondWidthUsed -
+        firstWidthUsed
+      );
+    }
+
+    /*
+      3. Finalmente preferimos menos filas.
+    */
+    return (
+      firstRows -
+      secondRows
+    );
+  }
+);
+
+      const chosen =
+        orientationOptions[0];
+
+      const orientation =
+        chosen.orientation;
+
+      /*
+        Cantidad máxima que podemos
+        colocar lado a lado.
+      */
+      const across =
+  Math.max(
+    1,
+    Math.min(
+      chosen.across,
+      group.quantity
+    )
+  );
+/*
+  Calculamos cuántos niveles verticales
+  admite este producto.
+
+  Primero llenaremos el piso y después
+  comenzaremos a apilar.
+*/
+const maximumLayers =
+  product?.stackable === false
+    ? 1
+    : Math.max(
+        1,
+        Math.floor(
+          (
+            dimensions.height +
+            EPSILON
+          ) /
+          orientation.height
+        )
+      );
+/*
+  Evaluamos todas las cantidades posibles
+  de niveles.
+
+  Buscamos un equilibrio entre:
+  - poco largo ocupado;
+  - buen aprovechamiento del ancho;
+  - poca altura innecesaria.
+*/
+let bestLayerCount = 1;
+let bestLayerScore = Infinity;
+
+for (
+  let candidateLayers = 1;
+  candidateLayers <= maximumLayers;
+  candidateLayers += 1
+) {
+  const candidateUnitsPerSlice =
+    across *
+    candidateLayers;
+
+  const candidateRows =
+    Math.ceil(
+      group.quantity /
+      candidateUnitsPerSlice
+    );
+
+  const candidateLength =
+    candidateRows *
+    orientation.length;
+
+  const candidateWidth =
+    Math.min(
+      across,
+      group.quantity
+    ) *
+    orientation.width;
+
+  const candidateHeight =
+    candidateLayers *
+    orientation.height;
+
+  const candidateScore =
+    candidateLength +
+    candidateWidth +
+    candidateHeight * 1.5;
+
+  if (
+    candidateScore <
+    bestLayerScore
+  ) {
+    bestLayerScore =
+      candidateScore;
+
+    bestLayerCount =
+      candidateLayers;
+  }
+}
+/*
+  Usamos la cantidad de niveles
+  que obtuvo la mejor puntuación
+  de compactación.
+*/
+const layers =
+  Math.max(
+    1,
+    Math.min(
+      maximumLayers,
+      bestLayerCount
+    )
+  );
+
+const unitsPerSlice =
+  across * layers;
+  /*
+  Cantidad de filas longitudinales
+  necesarias para este bloque.
+
+  Esto nos permite evaluar la forma
+  real del grupo antes de colocarlo.
+*/
+const requiredRows =
+  Math.max(
+    1,
+    Math.ceil(
+      group.quantity /
+      unitsPerSlice
+    )
+  );
+
+const blockLength =
+  requiredRows *
+  orientation.length;
+
+const blockWidth =
+  Math.min(
+    across,
+    group.quantity
+  ) *
+  orientation.width;
+
+const blockHeight =
+  layers *
+  orientation.height;
+  /*
+  Puntuación geométrica del bloque.
+
+  Menor puntuación = bloque más compacto.
+
+  Penalizamos especialmente la altura
+  para evitar torres innecesarias cuando
+  existe espacio útil en el piso.
+*/
+const blockFootprint =
+  blockLength *
+  blockWidth;
+
+const blockVolume =
+  blockFootprint *
+  blockHeight;
+
+const compactnessScore =
+  blockLength +
+  blockWidth +
+  blockHeight * 1.5;
+      /*
+        Centramos transversalmente
+        la fila del grupo.
+      */
+      const rowItems =
+        Math.min(
+          group.quantity,
+          across
+        );
+
+      const occupiedWidth =
+        rowItems *
+        orientation.width;
+
+      const startY =
+        Math.max(
+          0,
+          (
+            dimensions.width -
+            occupiedWidth
+          ) / 2
+        );
+              /*
+        Colocamos el grupo comenzando
+        exactamente en cursorX.
+
+        Cada fila ocupa el ancho y,
+        cuando se completa, avanzamos
+        longitudinalmente.
+      */
+      for (
+        let unitIndex = 0;
+        unitIndex < group.quantity;
+        unitIndex += 1
+      ) {
+        /*
+  Llenamos primero una fila completa
+  en el piso y luego repetimos
+  exactamente esa fila encima.
+*/
+/*
+  Elegimos una cantidad equilibrada
+  de unidades por nivel.
+
+  Para 6 unidades intentará formar
+  3 abajo + 3 arriba si físicamente
+  caben y pueden apilarse.
+*/
+const availableLevels =
+  canStack
+    ? Math.max(
+        1,
+        Number(
+          chosen.levels || 1
+        )
+      )
+    : 1;
+
+const desiredPerLayer =
+  canStack
+    ? Math.ceil(
+        group.quantity /
+        Math.min(
+          2,
+          availableLevels
+        )
+      )
+    : group.quantity;
+
+const unitsInLayer =
+  Math.max(
+    1,
+    Math.min(
+      across,
+      desiredPerLayer
+    )
+  );
+
+/*
+  Distribución compacta por bloques.
+
+  Primero llena transversalmente el piso.
+  Después apila encima de esas posiciones.
+  Cuando completa todos los niveles,
+  recién avanza longitudinalmente.
+*/
+const row =
+  Math.floor(
+    unitIndex /
+    unitsPerSlice
+  );
+
+const positionInSlice =
+  unitIndex %
+  unitsPerSlice;
+
+const layer =
+  Math.floor(
+    positionInSlice /
+    across
+  );
+
+const column =
+  positionInSlice %
+  across;
+
+const x =
+  cursorX +
+  row *
+    orientation.length;
+
+const y =
+  startY +
+  column *
+    orientation.width;
+
+const z =
+  layer *
+  orientation.height;
+
+const candidate = {
+  x,
+  y,
+  z,
+
+          length:
+            orientation.length,
+
+          width:
+            orientation.width,
+
+          height:
+            orientation.height,
+
+          rotated:
+            orientation.rotated,
+
+          rotationY:
+            orientation.rotationY,
+        };
+
+        /*
+          Validación de peso.
+        */
+        const productWeight =
+          toNumber(
+            product?.weight_kg
+          );
+
+        if (
+          maximumWeight > 0 &&
+          usedWeight +
+            productWeight >
+            maximumWeight
+        ) {
+          rejected.push({
+            product,
+            unit:
+              unitIndex + 1,
+            reason:
+              "Supera el peso máximo permitido",
+          });
+
+          continue;
+        }
+
+        /*
+          Debe quedar completamente
+          dentro de la unidad.
+        */
+        if (
+          !isInsideContainer(
+            candidate,
+            dimensions
+          )
+        ) {
+          rejected.push({
+            product,
+            unit:
+              unitIndex + 1,
+            reason:
+              "No entra en el espacio disponible",
+          });
+
+          continue;
+        }
+
+        /*
+          No puede solaparse con otro
+          producto ya colocado.
+        */
+        if (
+          placed.some(
+            (item) =>
+              boxesOverlap(
+                candidate,
+                item
+              )
+          )
+        ) {
+          rejected.push({
+            product,
+            unit:
+              unitIndex + 1,
+            reason:
+              "La posición calculada está ocupada",
+          });
+
+          continue;
+        }
+/*
+  Si la unidad va apilada,
+  debe tener soporte suficiente
+  debajo de su base.
+*/
+if (
+  candidate.z > EPSILON
+) {
+  const support =
+    getSupportRatio(
+      candidate,
+      placed
+    );
+
+  if (
+    support + EPSILON < 0.8
+  ) {
+    rejected.push({
+      product,
+      unit:
+        unitIndex + 1,
+      reason:
+        "No tiene apoyo suficiente para apilar",
+    });
+
+    continue;
+  }
+}
+        const placedItem = {
+          id:
+            `grouped-${product.id}-${unitIndex + 1}-${groupIndex}`,
+
+          instanceId:
+            `grouped-${product.id}-${unitIndex + 1}-${groupIndex}`,
+
+          product,
+
+          unit:
+            unitIndex + 1,
+
+          ...candidate,
+
+          orientation:
+            candidate.rotationY === 90
+              ? "ROTATED_90"
+              : "VERTICAL",
+
+          color:
+            getProductColor(
+              product
+            ),
+
+          locked: false,
+        };
+
+        placed.push(
+          placedItem
+        );
+
+        usedWeight +=
+          productWeight;
+      }
+            /*
+        El siguiente grupo comienza
+        inmediatamente después del
+        espacio ocupado por este grupo.
+      */
+      /*
+  Avanzamos solamente el largo
+  realmente ocupado por el bloque.
+
+  Si el grupo se apila en varios niveles,
+  no reservamos largo extra innecesario.
+*/
+const groupGap =
+  0.02;
+
+/*
+  Avanzamos solamente el largo
+  realmente ocupado por el bloque,
+  teniendo en cuenta el apilado.
+*/
+const longitudinalRows =
+  Math.ceil(
+    group.quantity /
+    unitsPerSlice
+  );
+
+cursorX +=
+  longitudinalRows *
+  orientation.length;
+  groupGap;
+    }
+  );
+  /*
+    Recentramos el bloque completo
+    longitudinalmente sin modificar
+    la distribución interna.
+  */
+  if (
+    placed.length > 0 &&
+    dimensions.length > 0
+  ) {
+    const minX =
+      Math.min(
+        ...placed.map(
+          (item) => item.x
+        )
+      );
+
+    const maxX =
+      Math.max(
+        ...placed.map(
+          (item) =>
+            item.x +
+            item.length
+        )
+      );
+
+    const blockLength =
+      maxX - minX;
+
+    const availableSpace =
+      Math.max(
+        0,
+        dimensions.length -
+        blockLength
+      );
+
+    const targetStartX =
+      availableSpace / 2;
+
+    const shiftX =
+      targetStartX -
+      minX;
+
+    placed.forEach(
+      (item) => {
+        item.x += shiftX;
+      }
+    );
+
+    
+  }
 
   return {
     placed,
     rejected,
   };
 }
-
 function getFloorFootprint(result) {
   return result.placed.reduce(
     (total, item) => {
@@ -1348,38 +3703,57 @@ function getSolutionBalance(
       const weight =
         Math.max(
           toNumber(
-            item?.product?.weight_kg
+            item?.product
+              ?.weight_kg
           ),
           EPSILON
         );
 
-      const centerX =
-        toNumber(item.x) +
-        toNumber(item.length) / 2;
+      const itemCenterX =
+        toNumber(
+          item.x
+        ) +
+        toNumber(
+          item.length
+        ) /
+          2;
 
-      const centerY =
-        toNumber(item.y) +
-        toNumber(item.width) / 2;
+      const itemCenterY =
+        toNumber(
+          item.y
+        ) +
+        toNumber(
+          item.width
+        ) /
+          2;
 
-      totalWeight += weight;
+      totalWeight +=
+        weight;
 
       momentX +=
-        weight * centerX;
+        weight *
+        itemCenterX;
 
       momentY +=
-        weight * centerY;
+        weight *
+        itemCenterY;
 
       if (
-        centerY <= width / 2
+        itemCenterY <=
+        width / 2
       ) {
-        leftWeight += weight;
+        leftWeight +=
+          weight;
       } else {
-        rightWeight += weight;
+        rightWeight +=
+          weight;
       }
     }
   );
 
-  if (totalWeight <= 0) {
+  if (
+    totalWeight <= 0
+  ) {
     return {
       lateralDifference: 0,
       longitudinalOffset: 0,
@@ -1388,10 +3762,12 @@ function getSolutionBalance(
   }
 
   const centerX =
-    momentX / totalWeight;
+    momentX /
+    totalWeight;
 
   const centerY =
-    momentY / totalWeight;
+    momentY /
+    totalWeight;
 
   return {
     lateralDifference:
@@ -1420,13 +3796,56 @@ function getSolutionBalance(
         : 0,
   };
 }
-
 export function runIntelligentOptimization(
   capacity,
   selectedItems
 ) {
-  const alternatives =
-    STRATEGIES.map(
+    /*
+    Nueva alternativa compacta
+    por grupos completos.
+  */
+  const groupedResult =
+    runGroupedCompactStrategy(
+      capacity,
+      selectedItems,
+      compactStrategy
+    );
+
+  const groupedEvaluation =
+    evaluateSolution({
+      capacity,
+      result:
+        groupedResult,
+      strategy:
+        compactStrategy,
+    });
+    const alternatives = [
+    {
+      strategy:
+        compactStrategy,
+
+      result:
+        groupedResult,
+
+      evaluation:
+        groupedEvaluation,
+
+      floorFootprint:
+        getFloorFootprint(
+          groupedResult
+        ),
+
+      balance:
+        getSolutionBalance(
+          capacity,
+          groupedResult
+        ),
+
+      grouped:
+        true,
+    },
+
+    ...STRATEGIES.map(
       (strategy) => {
         const result =
           runStrategy(
@@ -1457,9 +3876,14 @@ export function runIntelligentOptimization(
               capacity,
               result
             ),
+
+          grouped:
+            false,
         };
       }
-    ).sort(
+    ),
+  ]
+  .sort(
       (first, second) => {
         /*
           PRIORIDAD 1
@@ -1472,10 +3896,27 @@ export function runIntelligentOptimization(
             .placedCount;
 
         if (
-          placedDifference !== 0
+          placedDifference !==
+          0
         ) {
           return placedDifference;
         }
+        /*
+  PRIORIDAD 1.5
+
+  Si ambas alternativas colocan
+  la misma cantidad de productos,
+  damos prioridad al nuevo
+  planificador compacto por grupos.
+*/
+if (
+  first.grouped !==
+  second.grouped
+) {
+  return first.grouped
+    ? -1
+    : 1;
+}
 
         /*
           PRIORIDAD 2
@@ -1488,7 +3929,8 @@ export function runIntelligentOptimization(
             .rejectedCount;
 
         if (
-          rejectedDifference !== 0
+          rejectedDifference !==
+          0
         ) {
           return rejectedDifference;
         }
@@ -1525,10 +3967,8 @@ export function runIntelligentOptimization(
 
         /*
           PRIORIDAD 4
-          Si ninguna alternativa excede los
-          ejes, preferimos la que trabaje con
-          menor porcentaje de utilización
-          máxima de eje.
+          Menor utilización máxima
+          de cualquiera de los ejes.
         */
         const firstMaximumAxleUsage =
           Math.max(
@@ -1664,16 +4104,21 @@ export function runIntelligentOptimization(
       rejected: [],
 
       intelligence: {
-        alternativesAnalyzed: 0,
+        alternativesAnalyzed:
+          0,
+
         strategyName:
           "Sin estrategia",
-        qualityScore: 0,
-        alternatives: [],
+
+        qualityScore:
+          0,
+
+        alternatives:
+          [],
       },
     };
   }
-
-  return {
+    return {
     placed:
       best.result.placed,
 
@@ -1701,61 +4146,73 @@ export function runIntelligentOptimization(
         alternatives.map(
           (alternative) => ({
             strategyId:
-              alternative.strategy.id,
+              alternative
+                .strategy.id,
 
             strategyName:
-              alternative.strategy.name,
+              alternative
+                .strategy.name,
 
             qualityScore:
-              alternative.evaluation
+              alternative
+                .evaluation
                 .qualityScore,
 
             placedCount:
-              alternative.evaluation
+              alternative
+                .evaluation
                 .placedCount,
 
             rejectedCount:
-              alternative.evaluation
+              alternative
+                .evaluation
                 .rejectedCount,
 
             volumePercentage:
-              alternative.evaluation
+              alternative
+                .evaluation
                 .volumePercentage,
 
             floorFootprint:
-              alternative.floorFootprint,
+              alternative
+                .floorFootprint,
 
             frontAxleLoad:
               Number(
-                alternative.evaluation
+                alternative
+                  .evaluation
                   ?.frontAxleLoad ||
                   0
               ),
 
             rearAxleLoad:
               Number(
-                alternative.evaluation
+                alternative
+                  .evaluation
                   ?.rearAxleLoad ||
                   0
               ),
 
             frontAxleUsagePercent:
               Number(
-                alternative.evaluation
+                alternative
+                  .evaluation
                   ?.frontAxleUsagePercent ||
                   0
               ),
 
             rearAxleUsagePercent:
               Number(
-                alternative.evaluation
+                alternative
+                  .evaluation
                   ?.rearAxleUsagePercent ||
                   0
               ),
 
             totalAxleOverload:
               Number(
-                alternative.evaluation
+                alternative
+                  .evaluation
                   ?.totalAxleOverload ||
                   0
               ),
@@ -1768,8 +4225,12 @@ export function runIntelligentOptimization(
 export function getAvailableStrategies() {
   return STRATEGIES.map(
     (strategy) => ({
-      id: strategy.id,
-      name: strategy.name,
+      id:
+        strategy.id,
+
+      name:
+        strategy.name,
+
       description:
         strategy.description,
     })

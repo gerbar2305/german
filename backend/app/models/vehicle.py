@@ -73,6 +73,18 @@ class Vehicle(Base):
         default=None,
     )
 
+    front_axle_tare_kg: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        default=None,
+    )
+
+    rear_axle_tare_kg: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        default=None,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

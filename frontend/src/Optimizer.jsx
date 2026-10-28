@@ -521,6 +521,17 @@ export default function Optimizer({ token, onEditLoad }) {
 
     await handleOptimize();
   }
+  async function handleIntelligentReoptimize() {
+  if (
+    !window.confirm(
+      "¿Reoptimizar la orden con IA? La distribución visible será reemplazada por una nueva solución inteligente."
+    )
+  ) {
+    return;
+  }
+
+  await handleIntelligentOptimize();
+}
 
   function resetHistory(result) {
     historyRef.current = [
@@ -1087,7 +1098,124 @@ export default function Optimizer({ token, onEditLoad }) {
 
       return;
     }
+const selectedCargoWeight =
+  selectedItems.reduce(
+    (total, item) =>
+      total +
+      Number(
+        item.product?.weight_kg || 0
+      ) *
+        Number(item.quantity || 0),
+    0
+  );
 
+const vehicleTare =
+  Number(
+    selectedCapacity?.tare_weight_kg || 0
+  );
+
+const maxPayload =
+  Number(
+    selectedCapacity?.max_payload_kg || 0
+  );
+
+const maxGross =
+  Number(
+    selectedCapacity?.max_gross_weight_kg || 0
+  );
+
+const frontAxleMax =
+  Number(
+    selectedCapacity?.front_axle_max_kg || 0
+  );
+
+const rearAxleMax =
+  Number(
+    selectedCapacity?.rear_axle_max_kg || 0
+  );
+
+const frontAxleTare =
+  Number(
+    selectedCapacity?.front_axle_tare_kg || 0
+  );
+
+const rearAxleTare =
+  Number(
+    selectedCapacity?.rear_axle_tare_kg || 0
+  );
+
+const grossWeight =
+  vehicleTare +
+  selectedCargoWeight;
+
+const availableAxleCapacity =
+  Math.max(
+    0,
+    frontAxleMax -
+      frontAxleTare
+  ) +
+  Math.max(
+    0,
+    rearAxleMax -
+      rearAxleTare
+  );
+
+const impossibleReasons = [];
+
+if (
+  maxPayload > 0 &&
+  selectedCargoWeight >
+    maxPayload
+) {
+  impossibleReasons.push(
+    `La mercadería supera la carga útil máxima por ${(
+      selectedCargoWeight -
+      maxPayload
+    ).toFixed(0)} kg.`
+  );
+}
+
+if (
+  maxGross > 0 &&
+  grossWeight >
+    maxGross
+) {
+  impossibleReasons.push(
+    `El peso bruto supera el máximo permitido por ${(
+      grossWeight -
+      maxGross
+    ).toFixed(0)} kg.`
+  );
+}
+
+if (
+  frontAxleMax > 0 &&
+  rearAxleMax > 0 &&
+  selectedCargoWeight >
+    availableAxleCapacity
+) {
+  impossibleReasons.push(
+    `Los ejes no tienen capacidad suficiente. Faltan ${(
+      selectedCargoWeight -
+      availableAxleCapacity
+    ).toFixed(0)} kg.`
+  );
+}
+
+if (
+  impossibleReasons.length >
+  0
+) {
+  setError(
+    `Carga físicamente imposible. ${impossibleReasons.join(
+      " "
+    )}`
+  );
+
+  setRunningIntelligent(false);
+
+  return;
+}
     await new Promise(
       (resolve) =>
         window.setTimeout(
@@ -1795,6 +1923,21 @@ export default function Optimizer({ token, onEditLoad }) {
                   🔄 Reoptimizar
                 </button>
               )}
+              {activePlacedItems.length > 0 && (
+  <button
+    type="button"
+    className="intelligent-optimize-button"
+    onClick={handleIntelligentReoptimize}
+    disabled={
+      runningIntelligent ||
+      savingOptimization
+    }
+  >
+    {runningIntelligent
+      ? "🧠 Reoptimizando..."
+      : "🧠 Reoptimizar IA"}
+  </button>
+)}
 
               <button
                 type="button"
@@ -1833,94 +1976,279 @@ export default function Optimizer({ token, onEditLoad }) {
           </div>
 
           {intelligentResult && (
-            <section className="intelligent-result-card">
-              <div className="intelligent-result-header">
-                <div>
-                  <span>
-                    MEJOR ESTRATEGIA
-                  </span>
+  <section className="intelligent-result-card">
+    <div className="intelligent-result-header">
+      <div>
+        <span>
+          MEJOR ESTRATEGIA
+        </span>
 
-                  <strong>
-                    {
-                      intelligentResult.strategyName
-                    }
-                  </strong>
+        <strong>
+          {intelligentResult.strategyName}
+        </strong>
 
-                  <small>
-                    {
-                      intelligentResult.strategyDescription
-                    }
-                  </small>
-                </div>
+        <small>
+          {intelligentResult.strategyDescription}
+        </small>
+      </div>
 
-                <div className="intelligent-result-score">
-                  <b>
-                    {intelligentResult.qualityScore.toFixed(
-                      0
-                    )}
-                  </b>
+      <div className="intelligent-result-score">
+        <b>
+          {intelligentResult.qualityScore.toFixed(0)}
+        </b>
 
-                  <small>
-                    /100
-                  </small>
-                </div>
-              </div>
+        <small>
+          /100
+        </small>
+      </div>
+    </div>
 
-              <div className="intelligent-result-stats">
-                <div>
-                  <span>
-                    Alternativas
-                  </span>
+    <div className="intelligent-result-stats">
+      <div>
+        <span>
+          Alternativas
+        </span>
 
-                  <strong>
-                    {
-                      intelligentResult.alternativesAnalyzed
-                    }
-                  </strong>
-                </div>
+        <strong>
+          {intelligentResult.alternativesAnalyzed}
+        </strong>
+      </div>
 
-                <div>
-                  <span>
-                    Colocados
-                  </span>
+      <div>
+        <span>
+          Colocados
+        </span>
 
-                  <strong>
-                    {
-                      intelligentResult.metrics
-                        .placedCount
-                    }
-                  </strong>
-                </div>
+        <strong>
+          {intelligentResult?.metrics?.placedCount}
+        </strong>
+      </div>
 
-                <div>
-                  <span>
-                    Rechazados
-                  </span>
+      <div>
+        <span>
+          Rechazados
+        </span>
 
-                  <strong>
-                    {
-                      intelligentResult.metrics
-                        .rejectedCount
-                    }
-                  </strong>
-                </div>
+        <strong>
+          {intelligentResult?.metrics?.rejectedCount}
+        </strong>
+      </div>
 
-                <div>
-                  <span>
-                    Volumen
-                  </span>
+      <div>
+        <span>
+          Volumen
+        </span>
 
-                  <strong>
-                    {intelligentResult.metrics.volumePercentage.toFixed(
-                      1
-                    )}
-                    %
-                  </strong>
-                </div>
-              </div>
-            </section>
+        <strong>
+          {intelligentResult?.metrics?.volumePercentage.toFixed(1)}%
+        </strong>
+      </div>
+    </div>
+
+    {intelligentResult?.metrics?.feasibilityStatus ===
+      "impossible" && (
+      <div
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 10,
+          border: "1px solid #fecaca",
+          background: "#fef2f2",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 800,
+            fontSize: 16,
+            marginBottom: 8,
+          }}
+        >
+          🔴 Carga físicamente imposible
+        </div>
+
+        <div
+          style={{
+            fontSize: 13,
+            marginBottom: 10,
+          }}
+        >
+          La mercadería excede uno o más límites físicos de la unidad.
+          Redistribuirla no puede solucionar estos excesos.
+        </div>
+
+        {Array.isArray(
+          intelligentResult?.metrics?.impossibleReasons
+        ) &&
+          intelligentResult?.metrics?.impossibleReasons.length > 0 && (
+            <div
+              style={{
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              {intelligentResult?.metrics?.impossibleReasons.map(
+                (reason, index) => (
+                  <div
+                    key={`${reason}-${index}`}
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⚠️ {reason}
+                  </div>
+                )
+              )}
+            </div>
           )}
 
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 10,
+            borderTop: "1px solid #fecaca",
+            fontSize: 12,
+          }}
+        >
+          Mercadería:{" "}
+          <strong>
+            {Number(
+              intelligentResult?.metrics?.totalWeight || 0
+            ).toLocaleString("es-UY")}{" "}
+            kg
+          </strong>
+
+          {" · "}
+
+          Peso bruto:{" "}
+          <strong>
+            {Number(
+              intelligentResult?.metrics?.grossWeight || 0
+            ).toLocaleString("es-UY")}{" "}
+            kg
+          </strong>
+
+          {" · "}
+
+          Capacidad disponible de ejes:{" "}
+          <strong>
+            {Number(
+              intelligentResult?.metrics?.axleCargoCapacity || 0
+            ).toLocaleString("es-UY")}{" "}
+            kg
+          </strong>
+        </div>
+      </div>
+    )}
+
+    {intelligentResult?.metrics?.feasibilityStatus ===
+      "redistribute" && (
+      <div
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 10,
+          border: "1px solid #fde68a",
+          background: "#fffbeb",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 800,
+            marginBottom: 6,
+          }}
+        >
+          🟡 Carga viable — requiere redistribución
+        </div>
+
+        <div
+          style={{
+            fontSize: 13,
+          }}
+        >
+          El peso total puede transportarse, pero la distribución actual
+          sobrecarga al menos uno de los ejes.
+        </div>
+      </div>
+    )}
+
+    {intelligentResult?.metrics?.feasibilityStatus ===
+      "feasible" && (
+      <div
+        style={{
+          marginTop: 16,
+          padding: 12,
+          borderRadius: 10,
+          border: "1px solid #bbf7d0",
+          background: "#f0fdf4",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        🟢 Carga físicamente viable
+      </div>
+    )}
+  </section>
+)}
+
+              {intelligentResult?.metrics
+                ?.feasibilityStatus ===
+                "redistribute" && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 16,
+                    borderRadius: 10,
+                    border:
+                      "1px solid #fde68a",
+                    background:
+                      "#fffbeb",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      marginBottom: 6,
+                    }}
+                  >
+                    🟡 Carga viable — requiere redistribución
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                    }}
+                  >
+                    El peso total puede transportarse,
+                    pero la distribución actual
+                    sobrecarga al menos uno de los
+                    ejes. La Optimización Inteligente
+                    debe buscar una posición
+                    longitudinal más favorable.
+                  </div>
+                </div>
+              )}
+
+              {intelligentResult?.metrics
+                ?.feasibilityStatus ===
+                "feasible" && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 12,
+                    borderRadius: 10,
+                    border:
+                      "1px solid #bbf7d0",
+                    background:
+                      "#f0fdf4",
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}
+                >
+                  🟢 Carga físicamente viable
+                </div>
+              )}
+              
           <LoadViewer3D
             capacity={
               selectedCapacity

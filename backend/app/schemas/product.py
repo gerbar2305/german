@@ -10,6 +10,7 @@ class ProductCreate(BaseModel):
     width_m: float
     height_m: float
     weight_kg: float
+    max_stack_weight_kg: float | None = None
     stackable: bool = True
     rotatable: bool = True
     fragile: bool = False

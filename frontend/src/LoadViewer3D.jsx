@@ -43,11 +43,13 @@ export default function LoadViewer3D({
   const standbyCameraFitRequestedRef = useRef(false);
 
   const [selectedItemIndex, setSelectedItemIndex] =
-    useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [dragMeasurements, setDragMeasurements] = useState(null);
-  const [labelMode, setLabelMode] = useState("code-description");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  useState(null);
+
+
+const [editMode, setEditMode] = useState(false);
+const [dragMeasurements, setDragMeasurements] = useState(null);
+const [labelMode, setLabelMode] = useState("code-description");
+const [isFullscreen, setIsFullscreen] = useState(false);
 
   function normalizeRotation(value) {
     const number = Number(value || 0);
@@ -595,36 +597,52 @@ export default function LoadViewer3D({
     const heightPercentage = Number(
       weightBalance.centerPercent?.z ?? 0
     );
-
+    const lateralWeightImbalance =
+      Math.abs(
+        Number(
+          weightBalance.distribution?.left ?? 50
+        ) -
+        Number(
+          weightBalance.distribution?.right ?? 50
+        )
+      );
     const payloadPercentage =
       weightBalance.maxPayload > 0
         ? (weightBalance.totalWeight / weightBalance.maxPayload) * 100
         : 0;
 
-    const penalty =
+        const penalty =
       longitudinalDeviation * 1.1 +
       lateralDeviation * 1.8 +
+      lateralWeightImbalance * 0.9 +
       Math.max(0, heightPercentage - 40) * 0.7 +
       Math.max(0, payloadPercentage - 90) * 1.4 +
       weightBalance.warnings.length * 7;
 
     const score = Math.max(0, Math.min(100, 100 - penalty));
 
-    if (score >= 85) {
+       if (
+      score >= 85 &&
+      lateralWeightImbalance <= 10
+    ) {
       return {
         score,
         level: "excellent",
         label: "Excelente",
-        description: "La carga está bien centrada y presenta una distribución estable.",
+        description:
+          "La carga está bien centrada y presenta una distribución estable.",
       };
     }
 
-    if (score >= 65) {
+        if (score >= 65) {
       return {
         score,
         level: "acceptable",
         label: "Aceptable",
-        description: "La distribución es utilizable, aunque conviene revisar los desbalances.",
+        description:
+          lateralWeightImbalance > 10
+            ? "La carga es utilizable, pero presenta un desbalance lateral que conviene corregir."
+            : "La distribución es utilizable, aunque conviene revisar los desbalances.",
       };
     }
 
@@ -1007,14 +1025,32 @@ useEffect(() => {
           }
 
           const dimensions =
-            getDimensions(otherItem);
+  getDimensions(otherItem);
 
-          const otherBox = {
-            x: Number(otherItem.x || 0),
-            y: Number(otherItem.y || 0),
-            z: Number(otherItem.z || 0),
-            ...dimensions,
-          };
+const otherRotationY =
+  getRotationY(otherItem);
+
+const otherFootprint =
+  getRotatedFootprint(
+    dimensions.length,
+    dimensions.width,
+    otherRotationY
+  );
+
+const otherBox = {
+  x: Number(otherItem.x || 0),
+  y: Number(otherItem.y || 0),
+  z: Number(otherItem.z || 0),
+
+  length:
+    otherFootprint.length,
+
+  width:
+    otherFootprint.width,
+
+  height:
+    dimensions.height,
+};
 
           return boxesOverlap(
             candidate,
@@ -1025,38 +1061,75 @@ useEffect(() => {
     }
 
     // Zona temporal fuera del contenedor para reorganizar la carga.
-    const standbyZoneWidth = Math.max(containerLength * 0.22, 2.2);
-    const standbyZoneDepth = Math.max(containerWidth, 2.2);
-    const standbyZoneGeometry = new THREE.PlaneGeometry(
+// Solo se muestra cuando realmente hay algún bulto en Stand By.
+const hasStandbyItems = placedItems.some(
+  (item) => Boolean(item?.standby)
+);
+
+const standbyZoneWidth = Math.max(
+  containerLength * 0.22,
+  2.2
+);
+
+const standbyZoneDepth = Math.max(
+  containerWidth,
+  2.2
+);
+
+if (hasStandbyItems) {
+  const standbyZoneGeometry =
+    new THREE.PlaneGeometry(
       standbyZoneWidth,
       standbyZoneDepth
     );
-    const standbyZoneMaterial = new THREE.MeshBasicMaterial({
+
+  const standbyZoneMaterial =
+    new THREE.MeshBasicMaterial({
       color: "#e2e8f0",
       transparent: true,
       opacity: 0.72,
       side: THREE.DoubleSide,
     });
-    const standbyZone = new THREE.Mesh(
-      standbyZoneGeometry,
-      standbyZoneMaterial
-    );
-    standbyZone.rotation.x = -Math.PI / 2;
-    standbyZone.position.set(
-      containerLength + standbyZoneWidth / 2 + Math.max(containerWidth * 0.35, 1.2),
-      0.015,
-      containerWidth / 2
-    );
-    scene.add(standbyZone);
 
-    const standbyZoneEdges = new THREE.EdgesGeometry(standbyZoneGeometry);
-    const standbyZoneOutline = new THREE.LineSegments(
-      standbyZoneEdges,
-      new THREE.LineBasicMaterial({ color: "#64748b" })
+  const standbyZone = new THREE.Mesh(
+    standbyZoneGeometry,
+    standbyZoneMaterial
+  );
+
+  standbyZone.rotation.x = -Math.PI / 2;
+
+  standbyZone.position.set(
+    containerLength +
+      standbyZoneWidth / 2 +
+      Math.max(containerWidth * 0.35, 1.2),
+    0.015,
+    containerWidth / 2
+  );
+
+  scene.add(standbyZone);
+
+  const standbyZoneEdges =
+    new THREE.EdgesGeometry(
+      standbyZoneGeometry
     );
-    standbyZoneOutline.rotation.x = -Math.PI / 2;
-    standbyZoneOutline.position.copy(standbyZone.position);
-    scene.add(standbyZoneOutline);
+
+  const standbyZoneOutline =
+    new THREE.LineSegments(
+      standbyZoneEdges,
+      new THREE.LineBasicMaterial({
+        color: "#64748b",
+      })
+    );
+
+  standbyZoneOutline.rotation.x =
+    -Math.PI / 2;
+
+  standbyZoneOutline.position.copy(
+    standbyZone.position
+  );
+
+  scene.add(standbyZoneOutline);
+}
 
     const productMeshes = [];
     const outlines = [];
@@ -1119,14 +1192,52 @@ useEffect(() => {
     }
 
     placedItems.forEach((item, index) => {
-      const dimensions = getDimensions(item);
+      const dimensions =
+  getDimensions(item);
 
-      const geometry =
-        new THREE.BoxGeometry(
-          dimensions.length,
+const rotationY =
+  getRotationY(item);
+
+/*
+  El optimizador ya guarda length y width
+  como la huella física ocupada.
+
+  Para dibujar una rotación de 90°,
+  Three.js necesita partir de las
+  dimensiones originales del producto,
+  evitando girarlas dos veces.
+*/
+const isSimpleRotation =
+  item.orientation === "ROTATED_90" ||
+  rotationY === 90 ||
+  rotationY === 270;
+
+const geometryDimensions =
+  isSimpleRotation
+    ? {
+        length:
+          Number(
+            item.product?.length_m ||
+            dimensions.width
+          ),
+
+        width:
+          Number(
+            item.product?.width_m ||
+            dimensions.length
+          ),
+
+        height:
           dimensions.height,
-          dimensions.width
-        );
+      }
+    : dimensions;
+
+const geometry =
+  new THREE.BoxGeometry(
+    geometryDimensions.length,
+    geometryDimensions.height,
+    geometryDimensions.width
+  );
 
       const isSelected =
         index === selectedItemIndex;
@@ -1157,13 +1268,12 @@ useEffect(() => {
         geometry,
         material
       );
-
-      const rotationY = getRotationY(item);
-      const footprint = getRotatedFootprint(
-        dimensions.length,
-        dimensions.width,
-        rotationY
-      );
+      const footprint =
+  getRotatedFootprint(
+    geometryDimensions.length,
+    geometryDimensions.width,
+    rotationY
+  );
 
       if (item.standby) {
         box.position.set(
@@ -1183,15 +1293,15 @@ useEffect(() => {
       box.rotation.y = THREE.MathUtils.degToRad(rotationY);
 
       box.userData = {
-        type: "product",
-        itemIndex: index,
-        originalColor,
-        dimensions,
-        rotationY,
-        footprint,
-        locked: isLocked,
-        standby: Boolean(item.standby),
-      };
+  type: "product",
+  itemIndex: index,
+  originalColor,
+  dimensions: geometryDimensions,
+  rotationY,
+  footprint,
+  locked: isLocked,
+  standby: Boolean(item.standby),
+};
 
       productMeshes.push(box);
       scene.add(box);
@@ -1506,14 +1616,15 @@ useEffect(() => {
       const mesh =
         intersections[0].object;
 
-      const index =
+            const index =
         mesh.userData.itemIndex;
+
+   
 
       setSelectedItemIndex(index);
       markSelected(index);
 
       const item = placedItems[index];
-
       if (isItemLocked(item)) {
         renderer.domElement.style.cursor = "not-allowed";
         return;
@@ -1619,26 +1730,51 @@ useEffect(() => {
         ...draggedMesh.userData.dimensions,
         rotationY: draggedMesh.userData.rotationY,
       };
+    
+console.log(
+  "INDICES DRAG",
+  {
+    draggedIndex,
+    totalOriginal:
+      placedItems.length,
+    totalSinStandby:
+      placedItems.filter(
+        (item) => !item.standby
+      ).length,
+  }
+);
+const activePlacedItems =
+  placedItems.filter(
+    (item) => !item.standby
+  );
+
+const draggedItem =
+  placedItems[draggedIndex];
+
+const activeMovingIndex =
+  activePlacedItems.findIndex(
+    (item) => item === draggedItem
+  );
 
       const dragPlacement = calculateDragPlacement({
-        intersectionPoint,
-        dragOffset,
-        dimensions,
-        currentZ: dragStartedFromStandby
-          ? 0
-          : Number(placedItems[draggedIndex].z || 0),
-        placedItems: placedItems.filter((item) => !item.standby),
-        movingIndex: draggedIndex,
-        capacity,
-      });
+  intersectionPoint,
+  dragOffset,
+  dimensions,
+  currentZ: dragStartedFromStandby
+    ? 0
+    : Number(placedItems[draggedIndex].z || 0),
+  placedItems: activePlacedItems,
+  movingIndex: activeMovingIndex,
+  capacity,
+});
 
-      validDrop = dragPlacement.valid;
-      proposedPosition = {
-        x: dragPlacement.candidate.x,
-        y: dragPlacement.candidate.y,
-        z: dragPlacement.candidate.z,
-      };
+validDrop = dragPlacement.valid;
 
+proposedPosition = {
+  x: dragPlacement.candidate.x,
+  y: dragPlacement.candidate.y,
+  z: dragPlacement.candidate.z,
+};
       setDragMeasurements(
         calculateClearances({
           candidate: dragPlacement.candidate,
@@ -1647,14 +1783,26 @@ useEffect(() => {
           movingIndex: draggedIndex,
         })
       );
-
-      applyDragPreview({
-        mesh: draggedMesh,
-        outline: draggedOutline,
-        candidate: dragPlacement.candidate,
-        dimensions,
-        valid: validDrop,
-      });
+console.log(
+  "PREVIEW FINAL",
+  {
+    valid: validDrop,
+    candidate:
+      dragPlacement.candidate,
+    meshAntes: {
+      x: draggedMesh.position.x,
+      y: draggedMesh.position.y,
+      z: draggedMesh.position.z,
+    },
+  }
+);
+     applyDragPreview({
+  mesh: draggedMesh,
+  outline: draggedOutline,
+  candidate: dragPlacement.candidate,
+  dimensions,
+  valid: validDrop,
+});
     }
 
     function finishDragging(event) {
@@ -1676,6 +1824,14 @@ useEffect(() => {
       controls.enabled = true;
       renderer.domElement.style.cursor =
         editMode ? "pointer" : "grab";
+        console.log(
+  "SOLTAR PRODUCTO",
+  {
+    validDrop,
+    proposedPosition,
+    draggedIndex,
+  }
+);
 
       if (validDrop && proposedPosition) {
         let updatedItems;
@@ -1846,7 +2002,8 @@ useEffect(() => {
 
       renderer.dispose();
       element.innerHTML = "";
-    };
+    
+};
   }, [
     capacity,
     placedItems,
@@ -1854,7 +2011,7 @@ useEffect(() => {
     editMode,
     weightBalance,
   ]);
-
+  
   if (!capacity) {
     return (
       <div className="viewer-empty">
@@ -2327,6 +2484,7 @@ left: 18,
               >
                 📄 Duplicar
               </button>
+                            
 
               {!selectedItem.standby ? (
   <button
@@ -2429,7 +2587,7 @@ left: 18,
               R gira +15° y Shift+R gira −15°. Cada ángulo valida límites,
               colisiones y Snap automáticamente.
             </span>
-          </div>
+             </div>
         </div>
       )}
     </div>

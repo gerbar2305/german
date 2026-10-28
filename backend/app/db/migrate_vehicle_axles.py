@@ -65,8 +65,18 @@ def migrate():
         "rear_axle_max_kg",
         "FLOAT",
     )
+add_column_if_missing(
+    "vehicles",
+    "front_axle_tare_kg",
+    "FLOAT",
+)
 
-    print("Migración finalizada correctamente.")
+add_column_if_missing(
+    "vehicles",
+    "rear_axle_tare_kg",
+    "FLOAT",
+)
+print("Migración finalizada correctamente.")
 
 
 if __name__ == "__main__":

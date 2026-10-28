@@ -10,6 +10,7 @@ const initialForm = {
   width_m: "",
   height_m: "",
   weight_kg: "",
+  max_stack_weight_kg: "",
   stackable: true,
   rotatable: true,
   fragile: false,
@@ -64,7 +65,10 @@ export default function Products({ token, onCountChange }) {
       width_m: String(product.width_m ?? ""),
       height_m: String(product.height_m ?? ""),
       weight_kg: String(product.weight_kg ?? ""),
-      stackable: Boolean(product.stackable),
+max_stack_weight_kg: String(
+  product.max_stack_weight_kg ?? ""
+),
+stackable: Boolean(product.stackable),
       rotatable: Boolean(product.rotatable),
       fragile: Boolean(product.fragile),
     });
@@ -113,6 +117,12 @@ export default function Products({ token, onCountChange }) {
       width_m: Number(form.width_m),
       height_m: Number(form.height_m),
       weight_kg: Number(form.weight_kg),
+      max_stack_weight_kg:
+  form.max_stack_weight_kg === ""
+    ? null
+    : Number(
+        form.max_stack_weight_kg
+      ),
     };
 
     try {
@@ -251,6 +261,20 @@ export default function Products({ token, onCountChange }) {
                 value={form.height_m}
                 onChange={handleChange}
                 required
+/>
+                <label htmlFor="max_stack_weight_kg">
+  Peso máximo soportado al apilar (kg)
+</label>
+
+<input
+  id="max_stack_weight_kg"
+  name="max_stack_weight_kg"
+  type="number"
+  step="0.01"
+  min="0"
+  value={form.max_stack_weight_kg}
+  onChange={handleChange}
+  placeholder="Opcional"
               />
             </div>
           </div>

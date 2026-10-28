@@ -237,10 +237,41 @@ export function isInsideContainer(
 }
 
 export function buildItemBox(item) {
+  const position =
+    getItemPosition(item);
+
+  const dimensions =
+    getItemDimensions(item);
+
+  const rotationY =
+    getRotationY(item);
+
+  const isSimpleRotation =
+    item?.orientation === "ROTATED_90" ||
+    rotationY === 90 ||
+    rotationY === 270;
+
+  const physicalDimensions =
+    isSimpleRotation
+      ? {
+          length: Number(
+            item?.product?.length_m ??
+              dimensions.width
+          ),
+
+          width: Number(
+            item?.product?.width_m ??
+              dimensions.length
+          ),
+
+          height: dimensions.height,
+        }
+      : dimensions;
+
   return {
-    ...getItemPosition(item),
-    ...getItemDimensions(item),
-    rotationY: getRotationY(item),
+    ...position,
+    ...physicalDimensions,
+    rotationY,
   };
 }
 
@@ -260,6 +291,19 @@ export function getSupportRatio({
     return 1;
   }
 
+  console.log("=== DIAGNOSTICO SOPORTE ===", {
+  candidate: {
+    x: candidate.x,
+    y: candidate.y,
+    z: candidate.z,
+    length: candidate.length,
+    width: candidate.width,
+    height: candidate.height,
+    rotationY: candidate.rotationY,
+  },
+  movingIndex,
+  totalPlacedItems: placedItems.length,
+});
   const supportingItems =
     placedItems
       .map((item, index) => ({
@@ -356,36 +400,64 @@ export function isValidPlacement({
   };
 
   if (
-    !isInsideContainer(
-      normalizedCandidate,
-      capacity
-    )
-  ) {
-    return false;
-  }
+  !isInsideContainer(
+    normalizedCandidate,
+    capacity
+  )
+) {
+  console.log("RECHAZADO: FUERA DEL CONTENEDOR", {
+    candidate: normalizedCandidate,
+  });
 
-  const hasCollision =
-    placedItems.some(
-      (
-        otherItem,
-        otherIndex
-      ) => {
-        if (
-          otherIndex === movingIndex
-        ) {
-          return false;
-        }
+  return false;
+}
 
-        return boxesOverlap(
+ const hasCollision =
+  placedItems.some(
+    (
+      otherItem,
+      otherIndex
+    ) => {
+      if (
+        otherIndex === movingIndex
+      ) {
+        return false;
+      }
+
+      const otherBox =
+        buildItemBox(otherItem);
+
+      const overlaps =
+        boxesOverlap(
           normalizedCandidate,
-          buildItemBox(otherItem)
+          otherBox
+        );
+
+      if (overlaps) {
+        console.log(
+          "COLISION CONTRA",
+          {
+            otherIndex,
+            nombre:
+              otherItem?.product?.name,
+            candidate:
+              normalizedCandidate,
+            otherBox,
+          }
         );
       }
-    );
+
+      return overlaps;
+    }
+  );
 
   if (hasCollision) {
-    return false;
-  }
+  console.log("RECHAZADO: COLISION", {
+    candidate: normalizedCandidate,
+  });
+
+  return false;
+}
 
   const supportRatio =
     getSupportRatio({
@@ -395,9 +467,17 @@ export function isValidPlacement({
       movingIndex,
     });
 
-  return (
-    supportRatio +
-      EPSILON >=
-    minimumSupportRatio
-  );
+  const supportValid =
+  supportRatio + EPSILON >=
+  minimumSupportRatio;
+
+if (!supportValid) {
+  console.log("RECHAZADO: SOPORTE", {
+    supportRatio,
+    minimumSupportRatio,
+    candidate: normalizedCandidate,
+  });
+}
+
+return supportValid;
 }
